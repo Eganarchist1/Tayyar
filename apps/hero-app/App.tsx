@@ -135,7 +135,7 @@ function AppNavigator() {
 }
 
 export default function App() {
-  const [loaded] = useFonts({
+  const [loaded, error] = useFonts({
     "Cairo-700": Cairo_700Bold,
     "Cairo-900": Cairo_900Black,
     "IBMPlexSansArabic-400": IBMPlexSansArabic_400Regular,
@@ -148,13 +148,21 @@ export default function App() {
     "DMMono-500": DMMono_500Medium,
   });
 
-  if (!loaded) {
-    return null;
-  }
+  const [fontTimeoutReached, setFontTimeoutReached] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setFontTimeoutReached(true);
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const shouldRender = loaded || Boolean(error) || fontTimeoutReached;
 
   return (
     <HeroLocaleProvider>
-      <AppNavigator />
+      {shouldRender ? <AppNavigator /> : null}
     </HeroLocaleProvider>
   );
 }
