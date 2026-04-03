@@ -1,0 +1,10 @@
+.git
+.next
+dist
+node_modules
+apps/web/.next
+apps/api/dist
+apps/hero-app/dist
+coverage
+*.log
+.turbo

@@ -1,0 +1,280 @@
+{
+  "baseUrl": "http://84.8.249.193:3000",
+  "checkedAt": "2026-03-29T01:49:04.477Z",
+  "totalRoutes": 27,
+  "overflowRoutes": 0,
+  "drawerFailures": 0,
+  "errorRoutes": 0,
+  "results": [
+    {
+      "role": "merchant",
+      "route": "/merchant",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/orders/new",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/orders",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/customers",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/branches",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/heroes",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/invoices",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "merchant",
+      "route": "/merchant/settings",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/map",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/orders",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/heroes",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/merchants",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/branches",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/users",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/customers",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/invoices",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/payouts",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/finance",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/reports",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/settings",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "admin",
+      "route": "/admin/zones",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "supervisor",
+      "route": "/supervisor/map",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "supervisor",
+      "route": "/supervisor/orders",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "supervisor",
+      "route": "/supervisor/heroes",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "supervisor",
+      "route": "/supervisor/alerts",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "role": "branch_manager",
+      "route": "/branch/orders",
+      "title": "Tayyar",
+      "overflowPx": 0,
+      "drawerOpen": null,
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "pageErrors": []
+    }
+  ]
+}

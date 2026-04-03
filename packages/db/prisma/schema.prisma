@@ -1,0 +1,902 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  SUPERVISOR
+  MERCHANT_OWNER
+  BRANCH_MANAGER
+  HERO
+}
+
+enum AdminPermissionScope {
+  HEROES
+  FINANCE
+  USERS
+  MERCHANTS
+  BRANCHES
+  OPERATIONS
+  REPORTS
+  MAPS
+}
+
+enum HeroStatus {
+  ONLINE
+  OFFLINE
+  ON_DELIVERY
+  ON_BREAK
+}
+
+enum OrderStatus {
+  REQUESTED
+  ASSIGNED
+  HERO_ACCEPTED
+  PICKED_UP
+  ON_WAY
+  IN_TRANSIT // Internal/System alias for ON_WAY if needed
+  ARRIVED
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum AssignmentModel {
+  DEDICATED   // Hero assigned to specific branch
+  POOL        // On-demand hero covers area
+}
+
+enum ContractType {
+  RETAINER_DAILY
+  RETAINER_WEEKLY
+  RETAINER_MONTHLY
+  PER_ORDER
+}
+
+enum MerchantFinanceScenario {
+  PER_ORDER
+  RETAINER
+  REVENUE_SHARE
+  HYBRID
+}
+
+enum SettlementCycle {
+  WEEKLY
+  MONTHLY
+}
+
+enum HeroVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StaffCompensationMode {
+  BASIC_PLUS_COMMISSION
+  COMMISSION_ONLY
+}
+
+enum StaffCompensationTarget {
+  HERO
+  BRANCH_MANAGER
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+  UNKNOWN
+}
+
+enum PingReason {
+  IDLE
+  MOVING_WITH_ORDER
+  MOVING_WITHOUT_ORDER
+}
+
+enum TransactionType {
+  ORDER_FEE      // Deducted from merchant
+  ORDER_PAYOUT   // Credited to hero
+  TOPUP          // Merchant recharge
+  WITHDRAWAL     // Hero payout
+  PENALTY        // Deduction
+  ADJUSTMENT     // Manual correction
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum PayoutStatus {
+  PENDING
+  CALCULATING
+  APPROVED
+  PAID
+  DISPUTED
+}
+
+enum LocationRequestStatus {
+  PENDING
+  RESOLVED
+  EXPIRED
+  FAILED
+}
+
+enum PaymentCollectionMode {
+  COLLECT_ON_DELIVERY
+  PREPAID
+}
+
+enum VacationType {
+  ANNUAL
+  SICK
+  EMERGENCY
+  UNPAID
+}
+
+enum VacationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AuthActionTokenPurpose {
+  ACCOUNT_ACTIVATION
+  PASSWORD_RESET
+}
+
+// ─── USERS & AUTH ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  clerkId       String?   @unique
+  email         String    @unique
+  phone         String?   @unique
+  name          String
+  role          UserRole
+  adminScopes   AdminPermissionScope[] @default([])
+  passwordHash  String?
+  avatarUrl     String?
+  isActive      Boolean   @default(true)
+  language      String    @default("ar") // ar | en
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  authSessions       AuthSession[]
+  loginOtps          LoginOtp[]
+  authActionTokens   AuthActionToken[]
+  supervisorZones    SupervisorZone[]
+  heroProfile        HeroProfile?
+  merchantOwnership  MerchantBrand?   @relation("BrandOwner")
+  branchManagement   Branch[]         @relation("BranchManager")
+  staffCompensationProfile StaffCompensationProfile?
+  financeLedgerEntries     FinanceLedgerEntry[] @relation("UserFinanceEntries")
+  decidedVacationRequests  HeroVacationRequest[] @relation("VacationDecisionUser")
+  
+  @@index([role])
+  @@index([phone])
+}
+
+model AuthSession {
+  id               String   @id @default(cuid())
+  userId           String
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginOtp {
+  id         String   @id @default(cuid())
+  userId     String?
+  phone      String
+  purpose    String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([phone, purpose, createdAt])
+  @@index([userId])
+}
+
+model AuthActionToken {
+  id         String                 @id @default(cuid())
+  userId     String
+  purpose    AuthActionTokenPurpose
+  tokenHash  String                 @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime               @default(now())
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+// ─── GEOGRAPHIC ZONES ─────────────────────────────────────────────────────────
+
+model Zone {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String
+  // PostGIS polygon geometry stored as raw SQL
+  boundaryWkt String   // WKT format: POLYGON((lng lat, ...))
+  city        String
+  isActive    Boolean  @default(true)
+  
+  // Pricing
+  baseFee     Float    @default(20.0) // Base delivery cost in EGP
+  kmRate      Float    @default(5.0)  // Cost per km in EGP
+  
+  createdAt   DateTime @default(now())
+
+  supervisors     SupervisorZone[]
+  heroProfiles    HeroProfile[]
+  orders          Order[]
+  transactions    Transaction[] @relation("ZoneTransactions")
+  
+  @@index([city])
+}
+
+model SupervisorZone {
+  supervisorId  String
+  zoneId        String
+  assignedAt    DateTime @default(now())
+  
+  supervisor    User   @relation(fields: [supervisorId], references: [id])
+  zone          Zone   @relation(fields: [zoneId], references: [id])
+  
+  @@id([supervisorId, zoneId])
+}
+
+// ─── MERCHANT HIERARCHY ───────────────────────────────────────────────────────
+
+model MerchantBrand {
+  id            String   @id @default(cuid())
+  name          String
+  nameAr        String?
+  logoUrl       String?
+  ownerId       String   @unique
+  walletBalance Float    @default(0.0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner         User     @relation("BrandOwner", fields: [ownerId], references: [id])
+  branches      Branch[]
+  contracts     Contract[]
+  invoices      Invoice[]
+  customers     CustomerProfile[]
+  locationRequests CustomerLocationRequest[]
+  transactions  Transaction[] @relation("MerchantTransactions")
+  financeCase   MerchantFinanceCase?
+  financeEntries FinanceLedgerEntry[] @relation("MerchantFinanceEntries")
+  
+  @@index([ownerId])
+}
+
+model CustomerProfile {
+  id              String   @id @default(cuid())
+  phone           String   @unique
+  name            String?
+  addresses       Json     // List of known addresses
+  lastAddress     String?
+  totalOrders     Int      @default(0)
+  merchantId      String
+  merchant        MerchantBrand @relation(fields: [merchantId], references: [id])
+  orders          Order[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Branch {
+  id              String   @id @default(cuid())
+  brandId         String
+  managerId       String?
+  name            String
+  nameAr          String?
+  address         String
+  lat             Float
+  lng             Float
+  phone           String?
+  isActive        Boolean  @default(true)
+  whatsappNumber  String?  // Branch-specific WA number
+  defaultHeroCompensationMode StaffCompensationMode @default(COMMISSION_ONLY)
+  defaultHeroBaseSalary Float @default(0.0)
+  defaultHeroCommissionPerOrder Float @default(0.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand           MerchantBrand  @relation(fields: [brandId], references: [id])
+  manager         User?          @relation("BranchManager", fields: [managerId], references: [id])
+  heroAssignments HeroAssignment[]
+  orders          Order[]
+  customers       CustomerAddressVault[]
+  locationRequests CustomerLocationRequest[]
+  staffCompensationProfiles StaffCompensationProfile[]
+  financeEntries  FinanceLedgerEntry[] @relation("BranchFinanceEntries")
+  
+  @@index([brandId])
+  @@index([managerId])
+}
+
+// ─── HERO PROFILES ────────────────────────────────────────────────────────────
+
+model HeroProfile {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  zoneId            String?
+  status            HeroStatus  @default(OFFLINE)
+  deviceInstallationId String?
+  pushToken         String?
+  devicePlatform    String?
+  deviceRegisteredAt DateTime?
+  lastAppVersion    String?
+  currentLat        Float?
+  currentLng        Float?
+  lastPingAt        DateTime?
+  bikeNumber        String?     @unique
+  nationalId        String?     @unique
+  licenseUrl        String?
+  nationalIdFrontUrl String?
+  nationalIdBackUrl  String?
+  bloodType         BloodType   @default(UNKNOWN)
+  efficiencyScore   Float       @default(100.0)  // 0-100 score
+  totalDeliveries   Int         @default(0)
+  ordersToday       Int         @default(0)
+  lastOrderAt       DateTime?
+  walletBalance     Float       @default(0.0)
+  totalEarnings     Float       @default(0.0)
+  isVerified        Boolean     @default(false)
+  verificationStatus HeroVerificationStatus @default(PENDING)
+  verificationNote  String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user              User         @relation(fields: [userId], references: [id])
+  zone              Zone?        @relation(fields: [zoneId], references: [id])
+  assignments       HeroAssignment[]
+  orders            Order[]
+  breadcrumbs       Breadcrumb[]
+  availabilityLogs  HeroAvailabilityLog[]
+  payouts           Payout[]
+  penalties         Penalty[]
+  transactions      Transaction[] @relation("HeroTransactions")
+  financeEntries    FinanceLedgerEntry[] @relation("HeroFinanceEntries")
+  vacationAllowances HeroVacationAllowance[]
+  vacationRequests  HeroVacationRequest[]
+  
+  @@index([status])
+  @@index([zoneId])
+  @@index([deviceInstallationId])
+}
+
+model HeroAssignment {
+  id              String          @id @default(cuid())
+  heroId          String
+  branchId        String
+  model           AssignmentModel
+  startDate       DateTime
+  endDate         DateTime?
+  isActive        Boolean         @default(true)
+  baseSalary      Float?          // For DEDICATED model
+  bonusPerOrder   Float?          // Small bonus on top of salary
+  createdAt       DateTime        @default(now())
+
+  hero            HeroProfile   @relation(fields: [heroId], references: [id])
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  
+  @@index([heroId])
+  @@index([branchId])
+  @@index([isActive])
+  @@index([branchId, model, isActive, startDate, endDate])
+  @@index([heroId, isActive, startDate, endDate])
+}
+
+// ─── CUSTOMER ADDRESS VAULT ───────────────────────────────────────────────────
+
+model CustomerAddressVault {
+  id            String    @id @default(cuid())
+  branchId      String
+  phone         String
+  name          String?
+  lat           Float
+  lng           Float
+  addressLabel  String?   // e.g. "Home", "Work", auto-labeled
+  waMessageId   String?   // WhatsApp message ID for audit
+  usageCount    Int       @default(1)
+  lastUsedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  branch        Branch    @relation(fields: [branchId], references: [id])
+  orders        Order[]
+
+  @@unique([branchId, phone, lat, lng])
+  @@index([branchId, phone])
+}
+
+model CustomerLocationRequest {
+  id                   String                @id @default(cuid())
+  merchantId           String
+  branchId             String
+  customerPhone        String
+  customerName         String?
+  requestedByEmail     String?
+  status               LocationRequestStatus @default(PENDING)
+  requestToken         String                @unique @default(cuid())
+  whatsappMessageId    String?
+  resolvedLat          Float?
+  resolvedLng          Float?
+  resolvedAddressLabel String?
+  expiresAt            DateTime
+  resolvedAt           DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  merchant MerchantBrand @relation(fields: [merchantId], references: [id])
+  branch   Branch        @relation(fields: [branchId], references: [id])
+
+  @@index([merchantId, customerPhone, status])
+  @@index([branchId, customerPhone])
+  @@index([createdAt])
+}
+
+// ─── ORDERS ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique // AG-2025-00001
+  branchId          String
+  heroId            String?
+  zoneId            String
+  customerAddressId String?
+  customerProfileId String?
+  
+  status            OrderStatus @default(REQUESTED)
+  model             AssignmentModel
+  trackingId        String      @unique @default(cuid())
+  
+  // Customer info
+  customerPhone     String
+  customerName      String?
+  deliveryLat       Float
+  deliveryLng       Float
+  deliveryAddress   String?
+  
+  // Pickup
+  pickupLat         Float
+  pickupLng         Float
+  
+  // Metrics
+  distanceKm        Float?      // Calculated on assignment
+  durationMinutes   Int?        // Actual delivery duration
+  
+  // OTP for POD
+  otpCode           String?     // 4-digit, expires after delivery attempt
+  otpHash           String?
+  otpExpiresAt      DateTime?
+  arrivedAt         DateTime?
+  otpVerifiedAt     DateTime?
+  
+  // Financial
+  deliveryFee       Float?
+  heroPayout        Float?
+  collectionAmount  Float?
+  paymentMode       PaymentCollectionMode @default(COLLECT_ON_DELIVERY)
+  
+  // Proof of Delivery
+  podPhotoUrl       String?
+  podNotes          String?
+  
+  // Timestamps
+  requestedAt       DateTime    @default(now())
+  assignedAt        DateTime?
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  
+  // WhatsApp
+  waConversationId  String?
+  
+  branch            Branch               @relation(fields: [branchId], references: [id])
+  hero              HeroProfile?         @relation(fields: [heroId], references: [id])
+  zone              Zone                 @relation(fields: [zoneId], references: [id])
+  customerAddress   CustomerAddressVault? @relation(fields: [customerAddressId], references: [id])
+  customerProfile   CustomerProfile?      @relation(fields: [customerProfileId], references: [id])
+  breadcrumbs       Breadcrumb[]
+  operationalNotes  OperationalNote[]
+  statusHistory     OrderStatusHistory[]
+  transactions      Transaction[]         @relation("OrderTransactions")
+  financeEntries    FinanceLedgerEntry[]
+  
+  @@index([branchId])
+  @@index([heroId])
+  @@index([status])
+  @@index([requestedAt])
+  @@index([orderNumber])
+  @@index([zoneId, status])
+  @@index([branchId, status, requestedAt])
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  changedBy String?     // userId
+  note      String?
+  lat       Float?
+  lng       Float?
+  createdAt DateTime    @default(now())
+
+  order     Order  @relation(fields: [orderId], references: [id])
+  
+  @@index([orderId])
+}
+
+// ─── GPS BREADCRUMBS ──────────────────────────────────────────────────────────
+
+model Breadcrumb {
+  id        BigInt      @id @default(autoincrement())
+  heroId    String
+  orderId   String?     // Null if Hero is idle
+  lat       Float
+  lng       Float
+  speed     Float?      // km/h
+  accuracy  Float?      // GPS accuracy in meters
+  reason    PingReason
+  battery   Int?        // Battery % at time of ping
+  createdAt DateTime    @default(now())
+
+  hero      HeroProfile @relation(fields: [heroId], references: [id])
+  order     Order?      @relation(fields: [orderId], references: [id])
+
+  // Partition by month in production for performance
+  @@index([heroId, createdAt])
+  @@index([orderId])
+}
+
+model HeroAvailabilityLog {
+  id          String      @id @default(cuid())
+  heroId       String
+  fromStatus   HeroStatus?
+  toStatus     HeroStatus
+  note         String?
+  changedBy    String?
+  createdAt    DateTime    @default(now())
+
+  hero         HeroProfile  @relation(fields: [heroId], references: [id], onDelete: Cascade)
+
+  @@index([heroId, createdAt])
+}
+
+model OperationalNote {
+  id          String    @id @default(cuid())
+  entityType  String
+  entityId    String
+  orderId     String?
+  note        String
+  authorId    String?
+  createdAt   DateTime  @default(now())
+
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([orderId, createdAt])
+}
+
+model OrderSequence {
+  id        Int       @id @default(autoincrement())
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
+}
+
+// ─── CONTRACTS & FINANCE ──────────────────────────────────────────────────────
+
+model Contract {
+  id              String       @id @default(cuid())
+  brandId         String
+  type            ContractType
+  value           Float        // Dollar amount (retainer amount OR per-order rate)
+  settlementRate  Float?
+  retainerAmount  Float?
+  perOrderFee     Float?
+  currency        String       @default("EGP")
+  validFrom       DateTime
+  validUntil      DateTime?
+  isActive        Boolean      @default(true)
+  notes           String?
+  createdAt       DateTime     @default(now())
+
+  brand           MerchantBrand @relation(fields: [brandId], references: [id])
+  
+  @@index([brandId, isActive])
+  @@index([brandId, validFrom, validUntil])
+}
+
+model MerchantFinanceCase {
+  id               String                  @id @default(cuid())
+  merchantId       String                  @unique
+  scenario         MerchantFinanceScenario @default(PER_ORDER)
+  settlementCycle  SettlementCycle         @default(WEEKLY)
+  settlementRate   Float?
+  retainerAmount   Float?
+  perOrderFee      Float?
+  currency         String                  @default("EGP")
+  effectiveFrom    DateTime                @default(now())
+  effectiveTo      DateTime?
+  isActive         Boolean                 @default(true)
+  notes            String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  merchant         MerchantBrand           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  ledgerEntries    FinanceLedgerEntry[]
+
+  @@index([scenario, settlementCycle, isActive])
+  @@index([merchantId, effectiveFrom, effectiveTo])
+}
+
+model Invoice {
+  id              String    @id @default(cuid())
+  brandId         String
+  periodStart     DateTime
+  periodEnd       DateTime
+  totalAmount     Float
+  currency        String    @default("EGP")
+  status          String    @default("DRAFT") // DRAFT | SENT | PAID | OVERDUE
+  pdfUrl          String?
+  dueDate         DateTime
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  brand           MerchantBrand @relation(fields: [brandId], references: [id])
+  lineItems       InvoiceLineItem[]
+  
+  @@index([brandId])
+  @@index([status])
+}
+
+model InvoiceLineItem {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Float
+  unitPrice   Float
+  total       Float
+  orderId     String?
+
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+}
+
+model Payout {
+  id              String    @id @default(cuid())
+  heroId          String
+  periodStart     DateTime
+  periodEnd       DateTime
+  baseSalary      Float     @default(0)
+  orderBonus      Float     @default(0)
+  penalties       Float     @default(0)
+  totalAmount     Float
+  currency        String    @default("EGP")
+  status          PayoutStatus    @default(PENDING)
+  approvedBy      String?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  hero            HeroProfile @relation(fields: [heroId], references: [id])
+  
+  @@index([heroId])
+  @@index([status])
+  @@unique([heroId, periodStart, periodEnd])
+}
+
+model StaffCompensationProfile {
+  id                  String                  @id @default(cuid())
+  userId              String                  @unique
+  branchId            String?
+  target              StaffCompensationTarget
+  mode                StaffCompensationMode
+  baseSalary          Float                   @default(0.0)
+  commissionPerOrder  Float                   @default(0.0)
+  isActive            Boolean                 @default(true)
+  notes               String?
+  effectiveFrom       DateTime                @default(now())
+  effectiveTo         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch              Branch?                 @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  ledgerEntries       FinanceLedgerEntry[]
+
+  @@index([branchId, isActive])
+  @@index([target, mode, isActive])
+}
+
+model Penalty {
+  id          String      @id @default(cuid())
+  heroId      String
+  orderId     String?
+  reason      String
+  amount      Float
+  currency    String      @default("EGP")
+  issuedBy    String      // supervisorId
+  createdAt   DateTime    @default(now())
+
+  hero        HeroProfile @relation(fields: [heroId], references: [id])
+  
+  @@index([heroId])
+}
+
+model Transaction {
+  id              String            @id @default(cuid())
+  type            TransactionType
+  status          TransactionStatus @default(SUCCESS)
+  amount          Float
+  currency        String            @default("EGP")
+  
+  // Entity owners (optional depending on type)
+  merchantId      String?
+  heroId          String?
+  zoneId          String?
+  orderId         String?
+  
+  description     String?
+  reference       String?           // External payment ref (e.g. Fawry/Stripe)
+  metadata        Json?             // Flexible data for specialized transactions
+  
+  createdAt       DateTime          @default(now())
+
+  merchant        MerchantBrand?    @relation("MerchantTransactions", fields: [merchantId], references: [id])
+  hero            HeroProfile?      @relation("HeroTransactions", fields: [heroId], references: [id])
+  zone            Zone?             @relation("ZoneTransactions", fields: [zoneId], references: [id])
+  order           Order?            @relation("OrderTransactions", fields: [orderId], references: [id])
+
+  @@index([merchantId])
+  @@index([heroId])
+  @@index([zoneId])
+  @@index([orderId])
+  @@index([merchantId, createdAt])
+  @@index([heroId, createdAt])
+}
+
+model FinanceLedgerEntry {
+  id                    String                    @id @default(cuid())
+  merchantId            String?
+  heroId                String?
+  userId                String?
+  branchId              String?
+  orderId               String?
+  merchantFinanceCaseId String?
+  compensationProfileId String?
+  entryType             String
+  amount                Float
+  currency              String                    @default("EGP")
+  description           String?
+  reference             String?
+  metadata              Json?
+  occurredAt            DateTime                  @default(now())
+  createdAt             DateTime                  @default(now())
+
+  merchant              MerchantBrand?            @relation("MerchantFinanceEntries", fields: [merchantId], references: [id], onDelete: SetNull)
+  hero                  HeroProfile?              @relation("HeroFinanceEntries", fields: [heroId], references: [id], onDelete: SetNull)
+  user                  User?                     @relation("UserFinanceEntries", fields: [userId], references: [id], onDelete: SetNull)
+  branch                Branch?                   @relation("BranchFinanceEntries", fields: [branchId], references: [id], onDelete: SetNull)
+  order                 Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  merchantFinanceCase   MerchantFinanceCase?      @relation(fields: [merchantFinanceCaseId], references: [id], onDelete: SetNull)
+  compensationProfile   StaffCompensationProfile? @relation(fields: [compensationProfileId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, occurredAt])
+  @@index([heroId, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([branchId, occurredAt])
+  @@index([orderId, occurredAt])
+  @@index([entryType, occurredAt])
+}
+
+model HeroVacationAllowance {
+  id          String       @id @default(cuid())
+  heroId       String
+  type         VacationType
+  totalDays    Int          @default(0)
+  usedDays     Int          @default(0)
+  notes        String?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  hero         HeroProfile  @relation(fields: [heroId], references: [id], onDelete: Cascade)
+
+  @@unique([heroId, type])
+  @@index([heroId, isActive])
+}
+
+model HeroVacationRequest {
+  id            String                @id @default(cuid())
+  heroId         String
+  type           VacationType
+  startDate      DateTime
+  endDate        DateTime
+  requestedDays  Int
+  status         VacationRequestStatus @default(PENDING)
+  reason         String?
+  decisionNote   String?
+  requestedAt    DateTime             @default(now())
+  decidedAt      DateTime?
+  decidedById    String?
+
+  hero           HeroProfile          @relation(fields: [heroId], references: [id], onDelete: Cascade)
+  decidedBy      User?                @relation("VacationDecisionUser", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([heroId, status, requestedAt])
+  @@index([decidedById, decidedAt])
+}
+
+model OperationalAlert {
+  id         String   @id @default(cuid())
+  kind       String
+  severity   String
+  status     String   @default("OPEN")
+  titleCode  String
+  messageCode String
+  entityType String?
+  entityId   String?
+  actionHref String?
+  dedupeKey  String?  @unique
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  resolvedAt DateTime?
+
+  @@index([status, createdAt])
+  @@index([kind, createdAt])
+  @@index([entityType, entityId])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorEmail  String?
+  action      String
+  entityType  String
+  entityId    String
+  summary     Json?
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorEmail, createdAt])
+}

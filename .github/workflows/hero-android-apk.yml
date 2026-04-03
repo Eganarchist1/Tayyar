@@ -1,0 +1,75 @@
+name: Hero Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "apps/hero-app/**"
+      - "packages/types/**"
+      - "packages/utils/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/hero-android-apk.yml"
+
+jobs:
+  build-hero-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      HERO_APP_API_URL: ${{ secrets.HERO_APP_API_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android toolchain
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.1.13356709"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Prepare hero app production env
+        working-directory: apps/hero-app
+        run: |
+          API_URL="${HERO_APP_API_URL:-http://84.8.249.193:3001}"
+          cat <<EOF > .env.production
+          EXPO_PUBLIC_API_URL=${API_URL}
+          EOF
+
+      - name: Build Android debug APK
+        working-directory: apps/hero-app/android
+        run: ./gradlew assembleDebug --console=plain
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayyar-hero-debug-apk
+          path: apps/hero-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
