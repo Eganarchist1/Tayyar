@@ -40,4 +40,4 @@ app-example
 
 # generated native folders
 /ios
-/android
+# android is committed because the hero app now builds through native Gradle CI
