@@ -65,6 +65,10 @@ jobs:
           EXPO_PUBLIC_API_URL=${API_URL}
           EOF
 
+      - name: Make Gradle wrapper executable
+        working-directory: apps/hero-app/android
+        run: chmod +x ./gradlew
+
       - name: Build Android debug APK
         working-directory: apps/hero-app/android
         run: ./gradlew assembleDebug --console=plain
