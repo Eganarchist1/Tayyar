@@ -12,8 +12,15 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { getHeroStatusMeta, getFontFamily, surfaceShadow, tayyarColors, tayyarRadii, tayyarSpacing, typeRamp } from "@/lib/design";
+import {
+  getHeroStatusMeta,
+  getFontFamily,
+  surfaceShadow,
+  tayyarColors,
+  tayyarRadii,
+  tayyarSpacing,
+  typeRamp,
+} from "@/lib/design";
 import { heroAppCopy } from "@/lib/copy";
 import { useHeroLocale } from "@/lib/locale";
 
@@ -50,10 +57,24 @@ export function TayyarScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-      <View style={styles.canvasGlowTop} />
-      <View style={styles.canvasGlowBottom} />
+      <View style={styles.bgGlowTop} />
+      <View style={styles.bgGlowBottom} />
       {content}
     </SafeAreaView>
+  );
+}
+
+export function HeroLoadingShell({ message }: { message?: string }) {
+  const { locale, t } = useHeroLocale();
+
+  return (
+    <TayyarScreen scroll={false} contentContainerStyle={styles.loadingWrap}>
+      <View style={styles.loadingOrb} />
+      <ActivityIndicator color={tayyarColors.skyLight} size="small" />
+      <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+        {message || t(heroAppCopy.common.restoringSession)}
+      </Text>
+    </TayyarScreen>
   );
 }
 
@@ -75,20 +96,7 @@ export function GlassPanel({
           ? styles.successPanel
           : styles.defaultPanel;
 
-  return (
-    <LinearGradient
-      colors={
-        tone === "gold"
-          ? ["rgba(245,158,11,0.16)", "rgba(7,11,20,0.92)"]
-          : ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.025)"]
-      }
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.panel, toneStyle, style]}
-    >
-      {children}
-    </LinearGradient>
-  );
+  return <View style={[styles.panel, toneStyle, style]}>{children}</View>;
 }
 
 export function SectionHeading({
@@ -104,9 +112,24 @@ export function SectionHeading({
 
   return (
     <View style={styles.sectionHeading}>
-      {eyebrow ? <Text style={[styles.eyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>{eyebrow}</Text> : null}
-      <Text style={[styles.heading, { fontFamily: getFontFamily(locale, "heading"), textAlign: textAlign(direction) }]}>{title}</Text>
-      {subtitle ? <Text style={[styles.subtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>{subtitle}</Text> : null}
+      {eyebrow ? (
+        <Text
+          style={[
+            styles.eyebrow,
+            { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
+          ]}
+        >
+          {eyebrow}
+        </Text>
+      ) : null}
+      <Text style={[styles.heading, { fontFamily: getFontFamily(locale, "heading"), textAlign: textAlign(direction) }]}>
+        {title}
+      </Text>
+      {subtitle ? (
+        <Text style={[styles.subtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>
+          {subtitle}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -124,7 +147,14 @@ export function MetricTile({
 
   return (
     <GlassPanel style={styles.metricTile} tone={tone === "sky" ? "sky" : tone}>
-      <Text style={[styles.metricLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>{label}</Text>
+      <Text
+        style={[
+          styles.metricLabel,
+          { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
+        ]}
+      >
+        {label}
+      </Text>
       <Text style={[styles.metricValue, { textAlign: textAlign(direction) }]}>{value}</Text>
     </GlassPanel>
   );
@@ -144,7 +174,11 @@ export function StatusPill({
     <View
       style={[
         styles.statusPill,
-        { backgroundColor: meta.bgColor, borderColor: meta.borderColor, flexDirection: rowDirection(direction) },
+        {
+          backgroundColor: meta.bgColor,
+          borderColor: meta.borderColor,
+          flexDirection: rowDirection(direction),
+        },
       ]}
     >
       <View style={[styles.statusDot, { backgroundColor: meta.textColor }]} />
@@ -175,10 +209,28 @@ export function TayyarButton({
   disabled?: boolean;
 }) {
   const { locale, direction } = useHeroLocale();
-  const content = (
-    <>
+  const palette =
+    variant === "primary"
+      ? styles.primaryButton
+      : variant === "outline"
+        ? styles.outlineButton
+        : styles.secondaryButton;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.button,
+        { flexDirection: rowDirection(direction) },
+        palette,
+        disabled && styles.disabledButton,
+        pressed && !disabled && styles.buttonPressed,
+        style,
+      ]}
+    >
       {loading ? (
-        <ActivityIndicator color={variant === "primary" ? "#071019" : tayyarColors.textPrimary} />
+        <ActivityIndicator color={variant === "primary" ? midnightInk : tayyarColors.textPrimary} />
       ) : (
         icon
       )}
@@ -192,33 +244,6 @@ export function TayyarButton({
       >
         {label}
       </Text>
-    </>
-  );
-
-  const contentStyle = [
-    styles.button,
-    { flexDirection: rowDirection(direction) },
-    variant === "primary" ? styles.primaryButton : variant === "outline" ? styles.outlineButton : styles.secondaryButton,
-    disabled && styles.disabledButton,
-  ];
-
-  if (variant === "primary") {
-    return (
-      <Pressable onPress={onPress} disabled={disabled || loading} style={style}>
-        <LinearGradient colors={["#FCD34D", tayyarColors.gold]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={contentStyle}>
-          {content}
-        </LinearGradient>
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={[contentStyle, style]}
-    >
-      {content}
     </Pressable>
   );
 }
@@ -263,14 +288,37 @@ export function TopBrandBar({
   return (
     <View style={[styles.topBar, { flexDirection: rowDirection(direction) }]}>
       <View style={styles.topBarCopy}>
-        <Text style={[styles.brandMark, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>{t(heroAppCopy.common.heroBrand)}</Text>
-        <Text style={[styles.topBarTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: textAlign(direction) }]}>{title}</Text>
-        <Text style={[styles.topBarSubtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>{subtitle}</Text>
+        <Text
+          style={[
+            styles.brandMark,
+            { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
+          ]}
+        >
+          {t(heroAppCopy.common.heroBrand)}
+        </Text>
+        <Text
+          style={[
+            styles.topBarTitle,
+            { fontFamily: getFontFamily(locale, "display"), textAlign: textAlign(direction) },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            styles.topBarSubtitle,
+            { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) },
+          ]}
+        >
+          {subtitle}
+        </Text>
       </View>
       {rightSlot}
     </View>
   );
 }
+
+const midnightInk = "#071019";
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -279,28 +327,44 @@ const styles = StyleSheet.create({
   },
   screenContent: {
     paddingHorizontal: tayyarSpacing.lg,
-    paddingBottom: 120,
+    paddingBottom: 112,
     paddingTop: 12,
     gap: tayyarSpacing.lg,
   },
-  canvasGlowTop: {
+  bgGlowTop: {
     position: "absolute",
-    top: -80,
-    left: 0,
-    right: 0,
-    height: 240,
-    backgroundColor: "rgba(14,165,233,0.12)",
-    borderRadius: 240,
-    transform: [{ scaleX: 1.25 }],
+    top: -110,
+    left: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
+    backgroundColor: "rgba(41,182,246,0.12)",
   },
-  canvasGlowBottom: {
+  bgGlowBottom: {
     position: "absolute",
     bottom: -140,
-    right: -30,
-    width: 240,
-    height: 240,
-    backgroundColor: "rgba(245,158,11,0.08)",
-    borderRadius: 240,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
+    backgroundColor: "rgba(245,182,64,0.08)",
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+  },
+  loadingOrb: {
+    width: 68,
+    height: 68,
+    borderRadius: 24,
+    backgroundColor: tayyarColors.surface2,
+    borderWidth: 1,
+    borderColor: tayyarColors.borderStrong,
+  },
+  loadingText: {
+    ...typeRamp.body,
   },
   topBar: {
     justifyContent: "space-between",
@@ -309,20 +373,18 @@ const styles = StyleSheet.create({
   },
   topBarCopy: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   brandMark: {
     ...typeRamp.label,
     color: tayyarColors.goldLight,
-    letterSpacing: 1.1,
+    letterSpacing: 1,
   },
   topBarTitle: {
     ...typeRamp.hero,
-    marginTop: 4,
   },
   topBarSubtitle: {
     ...typeRamp.body,
-    marginTop: 4,
   },
   panel: {
     borderRadius: tayyarRadii.xl,
@@ -336,20 +398,19 @@ const styles = StyleSheet.create({
     backgroundColor: tayyarColors.glass,
   },
   goldPanel: {
-    backgroundColor: "rgba(15, 12, 4, 0.88)",
+    backgroundColor: "rgba(38, 28, 8, 0.96)",
   },
   skyPanel: {
-    backgroundColor: "rgba(4, 13, 24, 0.88)",
+    backgroundColor: "rgba(9, 22, 37, 0.96)",
   },
   successPanel: {
-    backgroundColor: "rgba(3, 16, 12, 0.9)",
+    backgroundColor: "rgba(6, 27, 19, 0.96)",
   },
   sectionHeading: {
     gap: 6,
   },
   eyebrow: {
     ...typeRamp.label,
-    letterSpacing: 1,
   },
   heading: {
     ...typeRamp.heading,
@@ -359,7 +420,7 @@ const styles = StyleSheet.create({
   },
   metricTile: {
     flex: 1,
-    minHeight: 116,
+    minHeight: 112,
     justifyContent: "space-between",
   },
   metricLabel: {
@@ -395,7 +456,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: tayyarSpacing.lg,
   },
-  primaryButton: {},
+  primaryButton: {
+    backgroundColor: tayyarColors.gold,
+  },
   secondaryButton: {
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
@@ -406,6 +469,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tayyarColors.borderStrong,
   },
+  buttonPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.995 }],
+  },
   disabledButton: {
     opacity: 0.55,
   },
@@ -413,7 +480,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   primaryButtonText: {
-    color: "#071019",
+    color: midnightInk,
   },
   secondaryButtonText: {
     color: tayyarColors.textPrimary,
@@ -433,7 +500,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   localeToggleButtonActive: {
-    backgroundColor: "rgba(14,165,233,0.22)",
+    backgroundColor: "rgba(41,182,246,0.18)",
   },
   localeToggleText: {
     fontSize: 12,

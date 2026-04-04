@@ -1,36 +1,15 @@
 import React from "react";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import {
-  Alert,
-  Linking,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import {
-  GlassPanel,
-  SectionHeading,
-  StatusPill,
-  TayyarButton,
-  TayyarScreen,
-} from "@/components/tayyar-ui";
+import { Alert, Linking, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import { GlassPanel, SectionHeading, StatusPill, TayyarButton, TayyarScreen } from "@/components/tayyar-ui";
 import MissionMap from "@/components/MissionMap";
-import {
-  getOrderStage,
-  getFontFamily,
-  tayyarColors,
-  tayyarFonts,
-  typeRamp,
-} from "@/lib/design";
+import { getOrderStage, getFontFamily, tayyarColors, tayyarFonts, typeRamp } from "@/lib/design";
 import { heroAppCopy } from "@/lib/copy";
 import { useHeroLocale } from "@/lib/locale";
 import { heroFetch, isRetryableHeroError } from "@/lib/api";
 import { enqueueHeroAction, flushQueuedHeroActions, getQueuedHeroActionCount } from "@/lib/action-queue";
+import { heroFeedback } from "@/lib/feedback";
 import { useAuthStore } from "@/store/authStore";
 
 type OrderDetails = {
@@ -77,7 +56,7 @@ export default function OrderDetailsScreen() {
     }
 
     setOrder(activeOrder);
-  }, [id, token]);
+  }, [id, t, token]);
 
   const refreshQueuedState = React.useCallback(async () => {
     setPendingSyncCount(await getQueuedHeroActionCount());
@@ -105,7 +84,10 @@ export default function OrderDetailsScreen() {
 
   React.useEffect(() => {
     loadScreenData().catch((error: unknown) => {
-      Alert.alert(t(heroAppCopy.order.currentMission), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      Alert.alert(
+        t(heroAppCopy.order.currentMission),
+        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      );
       navigation.goBack();
     });
   }, [loadScreenData, navigation, t]);
@@ -115,14 +97,16 @@ export default function OrderDetailsScreen() {
     try {
       await syncQueuedActions();
     } catch (error) {
-      Alert.alert(t(heroAppCopy.common.refresh), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      Alert.alert(
+        t(heroAppCopy.common.refresh),
+        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      );
     } finally {
       setRefreshing(false);
     }
   }, [syncQueuedActions, t]);
 
   const stage = getOrderStage(order?.status);
-
   const actionLabel =
     stage === "pickup"
       ? t(heroAppCopy.order.confirmPickup)
@@ -148,10 +132,7 @@ export default function OrderDetailsScreen() {
     { key: "done", label: stageLabel("done", locale) },
   ] as const;
 
-  const currentStageIndex = Math.max(
-    0,
-    missionStages.findIndex((item) => item.key === stage),
-  );
+  const currentStageIndex = Math.max(0, missionStages.findIndex((item) => item.key === stage));
 
   async function handlePrimaryAction() {
     if (!order) {
@@ -160,6 +141,7 @@ export default function OrderDetailsScreen() {
 
     setSubmitting(true);
     setFeedback(null);
+
     try {
       if (stage === "pickup") {
         await heroFetch(
@@ -176,6 +158,7 @@ export default function OrderDetailsScreen() {
         if (otp.length !== 4) {
           throw new Error(t(heroAppCopy.order.otpRequired));
         }
+
         await heroFetch(
           `/v1/orders/${order.id}/verify`,
           {
@@ -184,7 +167,7 @@ export default function OrderDetailsScreen() {
           },
           token,
         );
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        heroFeedback.success();
         navigation.goBack();
         return;
       } else {
@@ -192,7 +175,7 @@ export default function OrderDetailsScreen() {
         return;
       }
 
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      heroFeedback.impact();
       await loadOrder();
     } catch (error) {
       if (isRetryableHeroError(error) && stage !== "handoff") {
@@ -220,19 +203,22 @@ export default function OrderDetailsScreen() {
             : current,
         );
         await refreshQueuedState();
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        heroFeedback.warning();
         setFeedback({ tone: "gold", message: t(heroAppCopy.order.offlineQueuedBody) });
         return;
       }
 
       if (isRetryableHeroError(error) && stage === "handoff") {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        heroFeedback.warning();
         Alert.alert(t(heroAppCopy.common.pendingSync), t(heroAppCopy.order.verifyNeedsConnection));
         return;
       }
 
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(t(heroAppCopy.common.refresh), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      heroFeedback.error();
+      Alert.alert(
+        t(heroAppCopy.common.refresh),
+        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -252,11 +238,12 @@ export default function OrderDetailsScreen() {
     if (!order) {
       return;
     }
+
     const lat = stage === "pickup" ? order.pickupLat : order.deliveryLat;
     const lng = stage === "pickup" ? order.pickupLng : order.deliveryLng;
     const label = stage === "pickup" ? order.branch?.name || "Pickup" : order.deliveryAddress || "Customer";
-
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng} ${label}`)}`;
+
     Linking.openURL(url).catch(() => {
       Alert.alert(t(heroAppCopy.order.routeTitle), t(heroAppCopy.order.mapsError));
     });
@@ -276,7 +263,9 @@ export default function OrderDetailsScreen() {
   if (!order) {
     return (
       <TayyarScreen scroll={false} contentContainerStyle={styles.loadingScreen}>
-        <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "body") }]}>{t(heroAppCopy.order.loading)}</Text>
+        <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "body") }]}>
+          {t(heroAppCopy.order.loading)}
+        </Text>
       </TayyarScreen>
     );
   }
@@ -293,8 +282,12 @@ export default function OrderDetailsScreen() {
           icon={<Ionicons name={direction === "rtl" ? "arrow-forward" : "arrow-back"} size={16} color={tayyarColors.textPrimary} />}
         />
         <View style={[styles.headerCopy, { alignItems: direction === "rtl" ? "flex-end" : "flex-start" }]}>
-          <Text style={[styles.headerEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.order.currentMission)}</Text>
-          <Text style={[styles.headerTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: align }]}>{order.orderNumber}</Text>
+          <Text style={[styles.headerEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+            {t(heroAppCopy.order.currentMission)}
+          </Text>
+          <Text style={[styles.headerTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: align }]}>
+            {order.orderNumber}
+          </Text>
         </View>
       </View>
 
@@ -395,9 +388,13 @@ export default function OrderDetailsScreen() {
         <View style={[styles.routeStep, { flexDirection: rowDirection }]}>
           <View style={[styles.routeMarker, { backgroundColor: tayyarColors.gold }]} />
           <View style={styles.routeContent}>
-            <Text style={[styles.routeLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.order.pickup)}</Text>
+            <Text style={[styles.routeLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+              {t(heroAppCopy.order.pickup)}
+            </Text>
             <Text style={[styles.routeTitle, { textAlign: align }]}>{order.branch?.name || t(heroAppCopy.order.branch)}</Text>
-            <Text style={[styles.routeCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>{order.branch?.address || t(heroAppCopy.order.unavailableAddress)}</Text>
+            <Text style={[styles.routeCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
+              {order.branch?.address || t(heroAppCopy.order.unavailableAddress)}
+            </Text>
           </View>
         </View>
 
@@ -406,9 +403,13 @@ export default function OrderDetailsScreen() {
         <View style={[styles.routeStep, { flexDirection: rowDirection }]}>
           <View style={[styles.routeMarker, { backgroundColor: tayyarColors.sky }]} />
           <View style={styles.routeContent}>
-            <Text style={[styles.routeLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.order.dropoff)}</Text>
+            <Text style={[styles.routeLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+              {t(heroAppCopy.order.dropoff)}
+            </Text>
             <Text style={[styles.routeTitle, { textAlign: align }]}>{order.customerPhone}</Text>
-            <Text style={[styles.routeCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>{order.deliveryAddress || t(heroAppCopy.order.unavailableAddress)}</Text>
+            <Text style={[styles.routeCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
+              {order.deliveryAddress || t(heroAppCopy.order.unavailableAddress)}
+            </Text>
           </View>
         </View>
       </GlassPanel>
@@ -416,7 +417,11 @@ export default function OrderDetailsScreen() {
       <SectionHeading
         eyebrow={locale === "ar" ? "الخريطة" : "Map"}
         title={locale === "ar" ? "المسار على الخريطة" : "Route on the map"}
-        subtitle={locale === "ar" ? "الاستلام والتسليم ظاهرين على الخريطة." : "Pickup and drop-off are shown on the map."}
+        subtitle={
+          locale === "ar"
+            ? "نقطة الاستلام والتسليم ظاهرتان على الخريطة."
+            : "Pickup and drop-off are shown on the map."
+        }
       />
 
       <MissionMap
@@ -455,8 +460,12 @@ export default function OrderDetailsScreen() {
 
       {stage === "handoff" ? (
         <GlassPanel style={styles.otpCard} tone="gold">
-          <Text style={[styles.otpTitle, { fontFamily: getFontFamily(locale, "heading") }]}>{t(heroAppCopy.order.otpTitle)}</Text>
-          <Text style={[styles.otpCopy, { fontFamily: getFontFamily(locale, "body") }]}>{t(heroAppCopy.order.otpBody)}</Text>
+          <Text style={[styles.otpTitle, { fontFamily: getFontFamily(locale, "heading") }]}>
+            {t(heroAppCopy.order.otpTitle)}
+          </Text>
+          <Text style={[styles.otpCopy, { fontFamily: getFontFamily(locale, "body") }]}>
+            {t(heroAppCopy.order.otpBody)}
+          </Text>
           <Pressable style={[styles.otpPreviewRow, { flexDirection: rowDirection }]} onPress={() => otpInputRef.current?.focus()}>
             {Array.from({ length: 4 }).map((_, index) => {
               const digit = otp[index] || "";
@@ -471,10 +480,10 @@ export default function OrderDetailsScreen() {
           <TextInput
             ref={otpInputRef}
             value={otp}
-            onChangeText={async (value) => {
+            onChangeText={(value) => {
               const next = value.replace(/\D/g, "").slice(0, 4);
               if (next.length > otp.length) {
-                await Haptics.selectionAsync();
+                heroFeedback.selection();
               }
               setOtp(next);
             }}
@@ -631,11 +640,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   progressDotActive: {
-    backgroundColor: "rgba(14,165,233,0.18)",
+    backgroundColor: "rgba(41,182,246,0.18)",
     borderColor: tayyarColors.skyLight,
   },
   progressDotComplete: {
-    backgroundColor: "rgba(16,185,129,0.18)",
+    backgroundColor: "rgba(34,197,94,0.18)",
     borderColor: tayyarColors.success,
   },
   progressDotText: {
@@ -694,7 +703,7 @@ const styles = StyleSheet.create({
   },
   otpPreviewCellFilled: {
     borderColor: tayyarColors.goldLight,
-    backgroundColor: "rgba(245,158,11,0.12)",
+    backgroundColor: "rgba(245,182,64,0.12)",
   },
   otpPreviewText: {
     fontFamily: tayyarFonts.mono,

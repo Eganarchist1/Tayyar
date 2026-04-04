@@ -1,14 +1,7 @@
 import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import {
-  GlassPanel,
-  LocaleTogglePill,
-  SectionHeading,
-  TayyarButton,
-  TayyarScreen,
-  TopBrandBar,
-} from "@/components/tayyar-ui";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import { GlassPanel, LocaleTogglePill, SectionHeading, TayyarButton, TayyarScreen, TopBrandBar } from "@/components/tayyar-ui";
 import { formatCurrency, getFontFamily, tayyarColors, tayyarFonts, typeRamp } from "@/lib/design";
 import { heroFetch } from "@/lib/api";
 import { useHeroLocale } from "@/lib/locale";
@@ -100,7 +93,7 @@ function vacationTypeLabel(locale: "ar" | "en", type: VacationAllowance["type"])
 function requestStatusLabel(locale: "ar" | "en", status: VacationRequestRecord["status"]) {
   switch (status) {
     case "APPROVED":
-      return tx(locale, "موافق عليها", "Approved");
+      return tx(locale, "تمت الموافقة", "Approved");
     case "REJECTED":
       return tx(locale, "مرفوضة", "Rejected");
     case "CANCELLED":
@@ -135,7 +128,10 @@ export default function HeroHrScreen() {
   React.useEffect(() => {
     loadData()
       .catch((error: unknown) => {
-        Alert.alert(tx(locale, "الموارد البشرية", "HR"), error instanceof Error ? error.message : tx(locale, "تعذر تحميل البيانات.", "Could not load data."));
+        Alert.alert(
+          tx(locale, "الموارد", "HR"),
+          error instanceof Error ? error.message : tx(locale, "تعذر تحميل البيانات.", "Could not load data."),
+        );
       })
       .finally(() => setLoading(false));
   }, [loadData, locale]);
@@ -145,7 +141,10 @@ export default function HeroHrScreen() {
     try {
       await loadData();
     } catch (error) {
-      Alert.alert(tx(locale, "تحديث", "Refresh"), error instanceof Error ? error.message : tx(locale, "تعذر تحديث البيانات.", "Could not refresh data."));
+      Alert.alert(
+        tx(locale, "تحديث", "Refresh"),
+        error instanceof Error ? error.message : tx(locale, "تعذر تحديث البيانات.", "Could not refresh data."),
+      );
     } finally {
       setRefreshing(false);
     }
@@ -154,8 +153,8 @@ export default function HeroHrScreen() {
   async function submitVacationRequest() {
     if (!startDate || !endDate) {
       Alert.alert(
-        tx(locale, "الاجازات", "Vacation"),
-        tx(locale, "اكتب تاريخ البداية والنهاية بصيغة YYYY-MM-DD.", "Enter start and end dates in YYYY-MM-DD format."),
+        tx(locale, "الإجازات", "Vacation"),
+        tx(locale, "أدخل تاريخ البداية والنهاية بصيغة YYYY-MM-DD.", "Enter start and end dates in YYYY-MM-DD format."),
       );
       return;
     }
@@ -179,12 +178,12 @@ export default function HeroHrScreen() {
       setStartDate("");
       setEndDate("");
       await loadData();
-      Alert.alert(
-        tx(locale, "تم الإرسال", "Submitted"),
-        tx(locale, "تم إرسال طلب الاجازة للمراجعة.", "Vacation request sent for review."),
-      );
+      Alert.alert(tx(locale, "تم الإرسال", "Submitted"), tx(locale, "تم إرسال طلب الإجازة للمراجعة.", "Vacation request sent for review."));
     } catch (error) {
-      Alert.alert(tx(locale, "طلب الاجازة", "Vacation request"), error instanceof Error ? error.message : tx(locale, "تعذر إرسال الطلب.", "Could not submit the request."));
+      Alert.alert(
+        tx(locale, "طلب الإجازة", "Vacation request"),
+        error instanceof Error ? error.message : tx(locale, "تعذر إرسال الطلب.", "Could not submit the request."),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -199,8 +198,8 @@ export default function HeroHrScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tayyarColors.gold} />}
     >
       <TopBrandBar
-        title={tx(locale, "الموارد البشرية", "HR & finance")}
-        subtitle={tx(locale, "الراتب والعمولات والاجازات.", "Compensation, commission, and leave.")}
+        title={tx(locale, "المالية والموارد", "HR & earnings")}
+        subtitle={tx(locale, "التعويضات، العمولات، والإجازات.", "Compensation, commission, and leave.")}
         rightSlot={<LocaleTogglePill />}
       />
 
@@ -213,37 +212,48 @@ export default function HeroHrScreen() {
             ? tx(locale, "راتب أساسي + عمولة", "Base salary + commission")
             : tx(locale, "عمولة فقط", "Commission only")}
         </Text>
+
         <View style={[styles.summaryRow, { flexDirection: rowDirection }]}>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryValue}>{formatCurrency(compensation?.compensation.baseSalary || 0, locale)}</Text>
-            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{tx(locale, "الراتب الأساسي", "Base salary")}</Text>
+            <Text style={styles.summaryValue}>{loading ? "..." : formatCurrency(compensation?.compensation.baseSalary || 0, locale)}</Text>
+            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {tx(locale, "الراتب الأساسي", "Base salary")}
+            </Text>
           </View>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryValue}>{formatCurrency(compensation?.compensation.commissionPerOrder || 0, locale)}</Text>
-            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{tx(locale, "عمولة الطلب", "Commission / order")}</Text>
+            <Text style={styles.summaryValue}>{loading ? "..." : formatCurrency(compensation?.compensation.commissionPerOrder || 0, locale)}</Text>
+            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {tx(locale, "عمولة كل طلب", "Commission per order")}
+            </Text>
           </View>
         </View>
+
         <View style={[styles.summaryRow, { flexDirection: rowDirection }]}>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryValue}>{compensation?.totals.deliveredOrders || 0}</Text>
-            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{tx(locale, "طلبات مكتملة", "Delivered orders")}</Text>
+            <Text style={styles.summaryValue}>{loading ? "..." : compensation?.totals.deliveredOrders || 0}</Text>
+            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {tx(locale, "طلبات مكتملة", "Delivered orders")}
+            </Text>
           </View>
           <View style={styles.summaryTile}>
-            <Text style={styles.summaryValue}>{formatCurrency(compensation?.totals.pendingPayoutAmount || 0, locale)}</Text>
-            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{tx(locale, "قيد الصرف", "Pending payout")}</Text>
+            <Text style={styles.summaryValue}>{loading ? "..." : formatCurrency(compensation?.totals.pendingPayoutAmount || 0, locale)}</Text>
+            <Text style={[styles.summaryLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {tx(locale, "قيد الصرف", "Pending payout")}
+            </Text>
           </View>
         </View>
+
         <Text style={[styles.assignmentNote, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
           {compensation?.compensation.branchName
             ? `${locale === "ar" ? compensation.compensation.branchNameAr || compensation.compensation.branchName : compensation.compensation.branchName || compensation.compensation.branchNameAr} • ${locale === "ar" ? compensation.compensation.merchantNameAr || compensation.compensation.merchantName || "" : compensation.compensation.merchantName || compensation.compensation.merchantNameAr || ""}`
-            : tx(locale, "لم يتم ربط تعويض بفرع نشط بعد.", "No active branch compensation is linked yet.")}
+            : tx(locale, "لا يوجد ربط تعويض نشط حالياً.", "No active compensation assignment yet.")}
         </Text>
       </GlassPanel>
 
       <SectionHeading
-        eyebrow={tx(locale, "الاجازات", "Vacation")}
+        eyebrow={tx(locale, "الإجازات", "Vacation")}
         title={tx(locale, "الرصيد والطلبات", "Balance and requests")}
-        subtitle={tx(locale, "راجع الرصيد وقدّم طلب جديد من هنا.", "Review your balance and submit a new request here.")}
+        subtitle={tx(locale, "راجع رصيدك وقدّم طلب إجازة جديد من هنا.", "Review your balance and submit a new vacation request here.")}
       />
 
       <View style={styles.allowanceGrid}>
@@ -263,7 +273,7 @@ export default function HeroHrScreen() {
       {vacation?.activeVacationRequest ? (
         <GlassPanel style={styles.activeVacationCard} tone="gold">
           <Text style={[styles.sectionEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-            {tx(locale, "اجازة نشطة", "Active leave")}
+            {tx(locale, "إجازة نشطة", "Active leave")}
           </Text>
           <Text style={[styles.sectionTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
             {vacationTypeLabel(locale, vacation.activeVacationRequest.type)}
@@ -309,7 +319,7 @@ export default function HeroHrScreen() {
         <TextInput
           multiline
           style={[styles.input, styles.textArea, { textAlign: align, fontFamily: getFontFamily(locale, "body") }]}
-          placeholder={tx(locale, "سبب الاجازة (اختياري)", "Reason for leave (optional)")}
+          placeholder={tx(locale, "سبب الإجازة (اختياري)", "Reason for leave (optional)")}
           placeholderTextColor={tayyarColors.textTertiary}
           value={reason}
           onChangeText={setReason}
@@ -325,7 +335,7 @@ export default function HeroHrScreen() {
       <SectionHeading
         eyebrow={tx(locale, "السجل", "History")}
         title={tx(locale, "آخر الطلبات", "Latest requests")}
-        subtitle={tx(locale, "كل طلب اجازة بحالته الحالية.", "Each vacation request with its current status.")}
+        subtitle={tx(locale, "كل طلب إجازة بحالته الحالية.", "Each leave request with its current status.")}
       />
 
       <View style={styles.requestList}>
@@ -353,10 +363,10 @@ export default function HeroHrScreen() {
         ) : (
           <GlassPanel style={styles.emptyCard}>
             <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading") }]}>
-              {tx(locale, "لا توجد طلبات اجازة بعد", "No leave requests yet")}
+              {tx(locale, "لا توجد طلبات إجازة بعد", "No leave requests yet")}
             </Text>
             <Text style={[styles.requestMeta, { fontFamily: getFontFamily(locale, "body"), textAlign: "center" }]}>
-              {tx(locale, "عندما ترسل طلباً سيظهر هنا للمراجعة والمتابعة.", "Your requests will appear here for review and follow-up.")}
+              {tx(locale, "عندما ترسل طلباً سيظهر هنا للمتابعة.", "Your requests will appear here for follow-up.")}
             </Text>
           </GlassPanel>
         )}

@@ -1,9 +1,8 @@
 import React from "react";
 import { useNavigation } from "@react-navigation/native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { GlassPanel, LocaleTogglePill, TayyarButton, TayyarScreen } from "@/components/tayyar-ui";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import { GlassPanel, HeroLoadingShell, LocaleTogglePill, TayyarButton, TayyarScreen } from "@/components/tayyar-ui";
 import { heroAppCopy } from "@/lib/copy";
 import { heroFetch } from "@/lib/api";
 import { useHeroLocale } from "@/lib/locale";
@@ -20,21 +19,15 @@ export default function LoginScreen() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState("");
 
-  if (!hasHydrated) {
-    return (
-      <TayyarScreen scroll={false} contentContainerStyle={styles.loadingScreen}>
-        <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "body") }]}>
-          {t(heroAppCopy.common.restoringSession)}
-        </Text>
-      </TayyarScreen>
-    );
-  }
-
   React.useEffect(() => {
     if (token) {
       navigation.navigate("MainTabs");
     }
   }, [navigation, token]);
+
+  if (!hasHydrated) {
+    return <HeroLoadingShell message={t(heroAppCopy.common.restoringSession)} />;
+  }
 
   if (token) {
     return null;
@@ -47,15 +40,18 @@ export default function LoginScreen() {
   async function handleContinue() {
     setLoading(true);
     setMessage("");
+
     try {
       if (step === "phone") {
         const payload = await heroFetch<{ sent: boolean; devCode?: string }>("/v1/auth/otp/request", {
           method: "POST",
           body: JSON.stringify({ phone: `+20${phone.replace(/\D/g, "")}` }),
         });
+
         if (payload.devCode) {
           setMessage(locale === "ar" ? `رمز الاختبار: ${payload.devCode}` : `Test code: ${payload.devCode}`);
         }
+
         setStep("otp");
         return;
       }
@@ -83,17 +79,27 @@ export default function LoginScreen() {
         <View style={styles.localeWrap}>
           <LocaleTogglePill />
         </View>
-        <LinearGradient colors={["#38BDF8", "#0EA5E9", "#F59E0B"]} style={styles.logoOrb}>
+
+        <View style={styles.logoOrb}>
           <Ionicons name="paper-plane" size={34} color="#071019" />
-        </LinearGradient>
-        <Text style={[styles.brand, { fontFamily: getFontFamily(locale, "display") }]}>{t(heroAppCopy.common.heroBrand)}</Text>
-        <Text style={[styles.title, { fontFamily: getFontFamily(locale, "heading"), textAlign: "center" }]}>{t(heroAppCopy.login.title)}</Text>
-        <Text style={[styles.subtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: "center" }]}>{t(heroAppCopy.login.subtitle)}</Text>
+        </View>
+
+        <Text style={[styles.brand, { fontFamily: getFontFamily(locale, "display") }]}>
+          {t(heroAppCopy.common.heroBrand)}
+        </Text>
+        <Text style={[styles.title, { fontFamily: getFontFamily(locale, "heading"), textAlign: "center" }]}>
+          {t(heroAppCopy.login.title)}
+        </Text>
+        <Text style={[styles.subtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: "center" }]}>
+          {t(heroAppCopy.login.subtitle)}
+        </Text>
       </View>
 
       <GlassPanel style={styles.panel}>
         <View style={styles.panelHeader}>
-          <Text style={[styles.panelEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.login.gateway)}</Text>
+          <Text style={[styles.panelEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+            {t(heroAppCopy.login.gateway)}
+          </Text>
           <Text style={[styles.panelTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
             {step === "phone" ? t(heroAppCopy.login.startWithPhone) : t(heroAppCopy.login.enterOtp)}
           </Text>
@@ -104,7 +110,9 @@ export default function LoginScreen() {
 
         {step === "phone" ? (
           <View style={styles.formBlock}>
-            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.login.phoneLabel)}</Text>
+            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+              {t(heroAppCopy.login.phoneLabel)}
+            </Text>
             <View style={[styles.inputShell, { flexDirection: rowDirection }]}>
               <Text style={styles.countryCode}>+20</Text>
               <TextInput
@@ -113,13 +121,21 @@ export default function LoginScreen() {
                 keyboardType="phone-pad"
                 placeholder="10X XXXX XXX"
                 placeholderTextColor={tayyarColors.textTertiary}
-                style={[styles.input, { textAlign: direction === "rtl" ? "right" : "left", fontFamily: getFontFamily("en", "mono") }]}
+                style={[
+                  styles.input,
+                  {
+                    textAlign: direction === "rtl" ? "right" : "left",
+                    fontFamily: getFontFamily("en", "mono"),
+                  },
+                ]}
               />
             </View>
           </View>
         ) : (
           <View style={styles.formBlock}>
-            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.login.otpLabel)}</Text>
+            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+              {t(heroAppCopy.login.otpLabel)}
+            </Text>
             <View style={[styles.otpRow, { flexDirection: rowDirection }]}>
               {[0, 1, 2, 3].map((index) => (
                 <View key={index} style={[styles.otpBox, otp[index] ? styles.otpBoxFilled : null]}>
@@ -136,12 +152,18 @@ export default function LoginScreen() {
               autoFocus
             />
             <Pressable onPress={() => setStep("phone")}>
-              <Text style={[styles.backLink, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{t(heroAppCopy.login.editPhone)}</Text>
+              <Text style={[styles.backLink, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+                {t(heroAppCopy.login.editPhone)}
+              </Text>
             </Pressable>
           </View>
         )}
 
-        {message ? <Text style={[styles.message, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>{message}</Text> : null}
+        {message ? (
+          <Text style={[styles.message, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
+            {message}
+          </Text>
+        ) : null}
 
         <TayyarButton
           label={step === "phone" ? t(heroAppCopy.login.sendCode) : t(heroAppCopy.login.openBoard)}
@@ -175,6 +197,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
+    backgroundColor: tayyarColors.gold,
+    borderWidth: 1,
+    borderColor: "rgba(245, 182, 64, 0.45)",
   },
   brand: {
     fontSize: 34,
@@ -246,7 +271,7 @@ const styles = StyleSheet.create({
   },
   otpBoxFilled: {
     borderColor: tayyarColors.sky,
-    backgroundColor: "rgba(14,165,233,0.12)",
+    backgroundColor: "rgba(41,182,246,0.12)",
   },
   otpDigit: {
     fontFamily: getFontFamily("en", "mono"),
@@ -266,13 +291,5 @@ const styles = StyleSheet.create({
   message: {
     ...typeRamp.body,
     color: tayyarColors.goldLight,
-  },
-  loadingScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    ...typeRamp.body,
   },
 });

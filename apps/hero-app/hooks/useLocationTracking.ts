@@ -1,7 +1,20 @@
-import * as Location from "expo-location";
+import Geolocation from "@react-native-community/geolocation";
+import { PERMISSIONS, RESULTS, check, request } from "react-native-permissions";
 import { heroFetch } from "@/lib/api";
 
-let locationSubscription: Location.LocationSubscription | null = null;
+let watchId: number | null = null;
+
+async function ensureLocationPermission() {
+  const permission = PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
+  const current = await check(permission);
+
+  if (current === RESULTS.GRANTED) {
+    return true;
+  }
+
+  const requested = await request(permission);
+  return requested === RESULTS.GRANTED;
+}
 
 async function postHeroLocation(latitude: number, longitude: number) {
   try {
@@ -19,32 +32,36 @@ async function postHeroLocation(latitude: number, longitude: number) {
 }
 
 export async function initBackgroundLocation() {
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== "granted") {
+  const granted = await ensureLocationPermission();
+  if (!granted) {
     throw new Error("Location permission not granted.");
   }
 
-  if (locationSubscription) {
-    return locationSubscription;
+  if (watchId !== null) {
+    return watchId;
   }
 
-  locationSubscription = await Location.watchPositionAsync(
-    {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 30000,
-      distanceInterval: 50,
+  watchId = Geolocation.watchPosition(
+    (position) => {
+      void postHeroLocation(position.coords.latitude, position.coords.longitude);
     },
-    async ({ coords }) => {
-      await postHeroLocation(coords.latitude, coords.longitude);
+    (error) => {
+      console.error("Location watch failed", error);
+    },
+    {
+      enableHighAccuracy: false,
+      distanceFilter: 50,
+      interval: 30000,
+      fastestInterval: 15000,
     },
   );
 
-  return locationSubscription;
+  return watchId;
 }
 
 export async function stopLocationTracking() {
-  if (locationSubscription) {
-    locationSubscription.remove();
-    locationSubscription = null;
+  if (watchId !== null) {
+    Geolocation.clearWatch(watchId);
+    watchId = null;
   }
 }

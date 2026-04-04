@@ -1,6 +1,6 @@
-"use client";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React from "react";
+import { I18nManager } from "react-native";
 import {
   getDirection,
   resolveLocalizedValue,
@@ -8,6 +8,8 @@ import {
   type AppLocale,
   type LocalizedValue,
 } from "@tayyar/utils";
+
+const HERO_LOCALE_KEY = "tayyar-hero-locale";
 
 type HeroLocaleContextValue = {
   locale: AppLocale;
@@ -19,50 +21,36 @@ type HeroLocaleContextValue = {
 
 const HeroLocaleContext = React.createContext<HeroLocaleContextValue | undefined>(undefined);
 
-function resolveInitialLocale(): AppLocale {
-  if (typeof document !== "undefined") {
-    const current = document.documentElement.lang?.toLowerCase();
-    if (current.startsWith("en")) return "en";
-    if (current.startsWith("ar")) return "ar";
-  }
-
-  if (typeof window === "undefined") {
-    return "ar";
-  }
-
-  const saved = window.localStorage.getItem("tayyar-hero-locale");
+async function resolveInitialLocale(): Promise<AppLocale> {
+  const saved = await AsyncStorage.getItem(HERO_LOCALE_KEY);
   if (saved === "ar" || saved === "en") {
     return saved;
   }
 
-  return window.navigator.language.toLowerCase().startsWith("ar") ? "ar" : "en";
-}
-
-function applyLocale(locale: AppLocale) {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  document.documentElement.lang = locale === "ar" ? "ar-EG" : "en";
-  document.documentElement.dir = getDirection(locale);
-  document.documentElement.dataset.locale = locale;
+  return I18nManager.isRTL ? "ar" : "ar";
 }
 
 export function HeroLocaleProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = React.useState<AppLocale>("ar");
 
   React.useEffect(() => {
-    const nextLocale = resolveInitialLocale();
-    setLocaleState(nextLocale);
-    applyLocale(nextLocale);
+    let mounted = true;
+
+    resolveInitialLocale()
+      .then((nextLocale) => {
+        if (mounted) {
+          setLocaleState(nextLocale);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const setLocale = React.useCallback((nextLocale: AppLocale) => {
     setLocaleState(nextLocale);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("tayyar-hero-locale", nextLocale);
-    }
-    applyLocale(nextLocale);
+    AsyncStorage.setItem(HERO_LOCALE_KEY, nextLocale).catch(() => undefined);
   }, []);
 
   const toggleLocale = React.useCallback(() => {

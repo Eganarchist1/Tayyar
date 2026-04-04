@@ -19,17 +19,7 @@ interface AuthState {
   logout: () => void;
 }
 
-const noopStorage: StateStorage = {
-  getItem: async () => null,
-  setItem: async () => undefined,
-  removeItem: async () => undefined,
-};
-
 function getAuthStorage(): StateStorage {
-  if (typeof window === "undefined") {
-    return noopStorage;
-  }
-
   return AsyncStorage as unknown as StateStorage;
 }
 

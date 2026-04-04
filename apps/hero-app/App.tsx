@@ -1,48 +1,44 @@
 import React from "react";
+import { I18nManager, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useFonts } from "expo-font";
-import { StatusBar } from "expo-status-bar";
-import { Cairo_700Bold, Cairo_900Black } from "@expo-google-fonts/cairo";
-import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from "@expo-google-fonts/dm-sans";
-import {
-  IBMPlexSansArabic_400Regular,
-  IBMPlexSansArabic_500Medium,
-  IBMPlexSansArabic_600SemiBold,
-} from "@expo-google-fonts/ibm-plex-sans-arabic";
-import { DMMono_500Medium } from "@expo-google-fonts/dm-mono";
-import { Syne_700Bold } from "@expo-google-fonts/syne";
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import DashboardScreen from "@/app/(tabs)/index";
 import WalletScreen from "@/app/(tabs)/wallet";
 import HrScreen from "@/app/(tabs)/explore";
 import LoginScreen from "@/app/login";
 import OrderDetailsScreen from "@/app/order/[id]";
-import "./global.css";
-import { HeroLocaleProvider, useHeroLocale } from "@/lib/locale";
+import { HeroLoadingShell } from "@/components/tayyar-ui";
 import { heroAppCopy } from "@/lib/copy";
 import { getFontFamily, tayyarColors } from "@/lib/design";
+import { HeroLocaleProvider, useHeroLocale } from "@/lib/locale";
 import { registerHeroDevice } from "@/lib/device-registration";
-import { useAuthStore } from "@/store/authStore";
 import type { HeroMainTabParamList, HeroRootStackParamList } from "@/lib/navigation";
+import { useAuthStore } from "@/store/authStore";
 
 const RootStack = createNativeStackNavigator<HeroRootStackParamList>();
 const Tabs = createBottomTabNavigator<HeroMainTabParamList>();
 
+const navigationTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: tayyarColors.canvas,
+    card: tayyarColors.surface,
+    border: tayyarColors.border,
+    primary: tayyarColors.gold,
+    text: tayyarColors.textPrimary,
+  },
+};
+
 function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
   const { locale, direction, t } = useHeroLocale();
+  const rowDirection = direction === "rtl" ? "row-reverse" : "row";
 
   return (
-    <View style={[styles.tabWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-      <LinearGradient
-        colors={["rgba(7,11,20,0.98)", "rgba(7,11,20,0.9)"]}
-        style={[styles.tabBar, { flexDirection: direction === "rtl" ? "row-reverse" : "row" }]}
-      >
+    <View style={styles.tabWrap}>
+      <View style={[styles.tabBar, { flexDirection: rowDirection }]}>
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
           const label =
@@ -53,6 +49,7 @@ function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
                 : locale === "ar"
                   ? "الموارد"
                   : "HR";
+
           const iconName =
             route.name === "Dashboard"
               ? "compass-outline"
@@ -64,13 +61,13 @@ function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
             <Pressable
               key={route.key}
               onPress={() => navigation.navigate(route.name as never)}
-              style={styles.tabButton}
+              style={[styles.tabButton, isFocused && styles.tabButtonActive]}
             >
               <View style={[styles.tabIconWrap, isFocused && styles.tabIconWrapActive]}>
                 <Ionicons
                   name={iconName}
                   size={20}
-                  color={isFocused ? tayyarColors.goldLight : tayyarColors.textTertiary}
+                  color={isFocused ? "#071019" : tayyarColors.textSecondary}
                 />
               </View>
               <Text
@@ -85,7 +82,7 @@ function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
             </Pressable>
           );
         })}
-      </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -106,6 +103,11 @@ function AppNavigator() {
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
 
   React.useEffect(() => {
+    I18nManager.allowRTL(true);
+    I18nManager.swapLeftAndRightInRTL(true);
+  }, []);
+
+  React.useEffect(() => {
     if (!hasHydrated || !user || !token) {
       return;
     }
@@ -114,55 +116,34 @@ function AppNavigator() {
   }, [hasHydrated, token, user]);
 
   if (!hasHydrated) {
-    return null;
+    return <HeroLoadingShell />;
   }
 
   return (
-    <NavigationContainer theme={DarkTheme}>
-      <RootStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#030509" } }}>
-        {token ? (
-          <>
-            <RootStack.Screen name="MainTabs" component={MainTabs} />
-            <RootStack.Screen name="OrderDetails" component={OrderDetailsScreen} />
-          </>
-        ) : (
-          <RootStack.Screen name="Login" component={LoginScreen} />
-        )}
-      </RootStack.Navigator>
-      <StatusBar style="light" />
-    </NavigationContainer>
+    <>
+      <StatusBar barStyle="light-content" backgroundColor={tayyarColors.canvas} />
+      <NavigationContainer theme={navigationTheme}>
+        <RootStack.Navigator
+          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: tayyarColors.canvas } }}
+        >
+          {token ? (
+            <>
+              <RootStack.Screen name="MainTabs" component={MainTabs} />
+              <RootStack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+            </>
+          ) : (
+            <RootStack.Screen name="Login" component={LoginScreen} />
+          )}
+        </RootStack.Navigator>
+      </NavigationContainer>
+    </>
   );
 }
 
 export default function App() {
-  const [loaded, error] = useFonts({
-    "Cairo-700": Cairo_700Bold,
-    "Cairo-900": Cairo_900Black,
-    "IBMPlexSansArabic-400": IBMPlexSansArabic_400Regular,
-    "IBMPlexSansArabic-500": IBMPlexSansArabic_500Medium,
-    "IBMPlexSansArabic-600": IBMPlexSansArabic_600SemiBold,
-    "DMSans-400": DMSans_400Regular,
-    "DMSans-500": DMSans_500Medium,
-    "DMSans-700": DMSans_700Bold,
-    "Syne-700": Syne_700Bold,
-    "DMMono-500": DMMono_500Medium,
-  });
-
-  const [fontTimeoutReached, setFontTimeoutReached] = React.useState(false);
-
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setFontTimeoutReached(true);
-    }, 2500);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const shouldRender = loaded || Boolean(error) || fontTimeoutReached;
-
   return (
     <HeroLocaleProvider>
-      {shouldRender ? <AppNavigator /> : null}
+      <AppNavigator />
     </HeroLocaleProvider>
   );
 }
@@ -170,24 +151,29 @@ export default function App() {
 const styles = StyleSheet.create({
   tabWrap: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 18,
+    bottom: 14,
+    left: 16,
+    right: 16,
   },
   tabBar: {
-    borderRadius: 28,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: tayyarColors.border,
-    paddingHorizontal: 12,
+    backgroundColor: "rgba(17,24,39,0.96)",
+    paddingHorizontal: 10,
     paddingTop: 10,
+    paddingBottom: 12,
     gap: 10,
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
     gap: 6,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  tabButtonActive: {
+    backgroundColor: "rgba(41,182,246,0.08)",
   },
   tabIconWrap: {
     width: 42,
@@ -195,10 +181,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   tabIconWrapActive: {
-    backgroundColor: "rgba(245,158,11,0.12)",
+    backgroundColor: tayyarColors.gold,
   },
   tabLabel: {
     fontSize: 11,

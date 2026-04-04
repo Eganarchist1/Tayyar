@@ -57,12 +57,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Prepare hero app production env
-        working-directory: apps/hero-app
+      - name: Write native build config
         run: |
           API_URL="${HERO_APP_API_URL:-http://84.8.249.193:3001}"
-          cat <<EOF > .env.production
-          EXPO_PUBLIC_API_URL=${API_URL}
+          cat <<EOF > apps/hero-app/lib/build-config.ts
+          export const heroBuildConfig = {
+            apiUrl: "${API_URL}",
+            appVersion: "1.1.0",
+            appName: "Tayyar Hero",
+          } as const;
           EOF
 
       - name: Make Gradle wrapper executable
@@ -71,7 +74,59 @@ jobs:
 
       - name: Build Android release APK
         working-directory: apps/hero-app/android
-        run: ./gradlew assembleRelease --console=plain
+        run: ./gradlew clean assembleRelease --console=plain
+
+      - name: Boot emulator and smoke test release launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          script: |
+            set -euo pipefail
+            export LC_ALL=C.UTF-8
+            capture_artifacts() {
+              adb logcat -d > hero-logcat.txt || true
+              adb shell uiautomator dump /sdcard/hero-ui.xml >/dev/null || true
+              adb pull /sdcard/hero-ui.xml hero-ui.xml >/dev/null 2>&1 || true
+              adb exec-out screencap -p > hero-launch.png || true
+            }
+            trap capture_artifacts EXIT
+            adb logcat -c
+            adb install -r apps/hero-app/android/app/build/outputs/apk/release/app-release.apk
+            adb shell am start -W -n com.tayyar.hero/.MainActivity
+            sleep 25
+            adb shell pidof com.tayyar.hero > hero-pid.txt
+            adb shell uiautomator dump /sdcard/hero-ui.xml >/dev/null
+            adb pull /sdcard/hero-ui.xml hero-ui.xml
+            python - <<'PY'
+            from pathlib import Path
+            text = Path("hero-ui.xml").read_text(encoding="utf-8", errors="ignore")
+            terms = [
+                "طيار هيرو",
+                "رقم الهاتف",
+                "رمز الدخول",
+                "لوحة العمل",
+                "المهام",
+                "المحفظة",
+                "Phone number",
+                "Dashboard",
+            ]
+            if not any(term in text for term in terms):
+                raise SystemExit(1)
+            PY
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tayyar-hero-smoke-evidence
+          path: |
+            hero-ui.xml
+            hero-launch.png
+            hero-logcat.txt
+            hero-pid.txt
+          if-no-files-found: warn
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

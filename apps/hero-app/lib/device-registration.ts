@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { heroFetch } from "./api";
+import { heroBuildConfig } from "./build-config";
 
 const INSTALLATION_ID_KEY = "tayyar-hero-installation-id";
 const LAST_REGISTERED_KEY = "tayyar-hero-device-registered";
@@ -23,7 +23,7 @@ export async function registerHeroDevice(token?: string | null) {
   }
 
   const installationId = await getInstallationId();
-  const registrationFingerprint = `${installationId}:${Platform.OS}:${Constants.expoConfig?.version || "dev"}`;
+  const registrationFingerprint = `${installationId}:${Platform.OS}:${heroBuildConfig.appVersion || "dev"}`;
   const lastRegistered = await AsyncStorage.getItem(LAST_REGISTERED_KEY);
 
   if (lastRegistered === registrationFingerprint) {
@@ -38,7 +38,7 @@ export async function registerHeroDevice(token?: string | null) {
         installationId,
         pushToken: null,
         platform: Platform.OS,
-        appVersion: Constants.expoConfig?.version || "dev",
+        appVersion: heroBuildConfig.appVersion || "dev",
       }),
     },
     token,

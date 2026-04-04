@@ -1,8 +1,7 @@
 import React from "react";
 import { useNavigation } from "@react-navigation/native";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import {
   GlassPanel,
   LocaleTogglePill,
@@ -18,6 +17,7 @@ import { heroAppCopy } from "@/lib/copy";
 import { useHeroLocale } from "@/lib/locale";
 import { heroFetch, heroLogout, isRetryableHeroError } from "@/lib/api";
 import { enqueueHeroAction, flushQueuedHeroActions, getQueuedHeroActionCount } from "@/lib/action-queue";
+import { heroFeedback } from "@/lib/feedback";
 import { initBackgroundLocation, stopLocationTracking } from "@/hooks/useLocationTracking";
 import { useAuthStore } from "@/store/authStore";
 
@@ -114,7 +114,10 @@ export default function HeroDashboard() {
     ])
       .catch((error: unknown) => {
         if (mounted) {
-          Alert.alert(t(heroAppCopy.common.noData), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+          Alert.alert(
+            t(heroAppCopy.common.noData),
+            error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+          );
         }
       })
       .finally(() => {
@@ -133,7 +136,10 @@ export default function HeroDashboard() {
     try {
       await syncQueuedActions();
     } catch (error) {
-      Alert.alert(t(heroAppCopy.common.refresh), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      Alert.alert(
+        t(heroAppCopy.common.refresh),
+        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      );
     } finally {
       setRefreshing(false);
     }
@@ -150,11 +156,7 @@ export default function HeroDashboard() {
 
     try {
       if (nextStatus === "ONLINE") {
-        try {
-          await initBackgroundLocation();
-        } catch (error) {
-          throw new Error(t(heroAppCopy.dashboard.locationPermissionBody));
-        }
+        await initBackgroundLocation();
       } else {
         await stopLocationTracking();
       }
@@ -169,11 +171,8 @@ export default function HeroDashboard() {
       );
 
       await loadData();
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setFeedback({
-        tone: "success",
-        message: t(heroAppCopy.dashboard.statusUpdated),
-      });
+      heroFeedback.success();
+      setFeedback({ tone: "success", message: t(heroAppCopy.dashboard.statusUpdated) });
     } catch (error) {
       if (isRetryableHeroError(error)) {
         await enqueueHeroAction({
@@ -184,11 +183,8 @@ export default function HeroDashboard() {
         });
         setHero((current) => (current ? { ...current, status: nextStatus } : current));
         await refreshQueuedState();
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        setFeedback({
-          tone: "gold",
-          message: t(heroAppCopy.common.queuedForSync),
-        });
+        heroFeedback.warning();
+        setFeedback({ tone: "gold", message: t(heroAppCopy.common.queuedForSync) });
         setStatusLoading(false);
         return;
       }
@@ -196,21 +192,23 @@ export default function HeroDashboard() {
       if (nextStatus === "ONLINE") {
         await stopLocationTracking().catch(() => undefined);
       }
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      heroFeedback.error();
       setFeedback({
         tone: "gold",
         message: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
       });
-      Alert.alert(t(heroAppCopy.common.refresh), error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      Alert.alert(
+        t(heroAppCopy.common.refresh),
+        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      );
     } finally {
       setStatusLoading(false);
     }
-  }, [hero, loadData, token]);
+  }, [hero, loadData, refreshQueuedState, t, token]);
 
   const activeStatus = getHeroStatusMeta(hero?.status, locale);
   const pilotName = user?.name || hero?.user?.name || (locale === "ar" ? "أحمد" : "Ahmed");
   const rowDirection = direction === "rtl" ? "row-reverse" : "row";
-  const textDirection = direction === "rtl" ? "row-reverse" : "row";
   const align = direction === "rtl" ? "right" : "left";
   const syncLabel = lastSyncAt
     ? new Intl.DateTimeFormat(locale === "ar" ? "ar-EG-u-nu-latn" : "en-GB", {
@@ -247,7 +245,9 @@ export default function HeroDashboard() {
       <GlassPanel style={styles.heroCard} tone="sky">
         <View style={[styles.heroCardHeader, { flexDirection: rowDirection }]}>
           <View style={styles.heroCopy}>
-            <Text style={[styles.heroEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>{t(heroAppCopy.dashboard.workState)}</Text>
+            <Text style={[styles.heroEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+              {t(heroAppCopy.dashboard.workState)}
+            </Text>
             <Text style={[styles.heroTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: align }]}>
               {hero?.status === "OFFLINE" ? t(heroAppCopy.dashboard.readyQuestion) : t(heroAppCopy.dashboard.onlineNow)}
             </Text>
@@ -263,19 +263,25 @@ export default function HeroDashboard() {
         <View style={[styles.heroMetaRow, { flexDirection: rowDirection }]}>
           <View style={styles.heroMetaItem}>
             <Text style={styles.heroMetaValue}>{orders.length}</Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{t(heroAppCopy.dashboard.activeMissions)}</Text>
+            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {t(heroAppCopy.dashboard.activeMissions)}
+            </Text>
           </View>
           <View style={styles.heroMetaDivider} />
           <View style={styles.heroMetaItem}>
             <Text style={styles.heroMetaValue}>{earnings.deliveredOrders}</Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{t(heroAppCopy.dashboard.completedToday)}</Text>
+            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {t(heroAppCopy.dashboard.completedToday)}
+            </Text>
           </View>
           <View style={styles.heroMetaDivider} />
           <View style={styles.heroMetaItem}>
             <Text style={styles.heroMetaValue}>
               {loading ? "..." : formatCurrency(earnings.totalOrderEarnings, locale)}
             </Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>{t(heroAppCopy.dashboard.todayIncome)}</Text>
+            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
+              {t(heroAppCopy.dashboard.todayIncome)}
+            </Text>
           </View>
         </View>
 
@@ -317,8 +323,16 @@ export default function HeroDashboard() {
       ) : null}
 
       <View style={[styles.metricsRow, { flexDirection: rowDirection }]}>
-        <MetricTile label={t(heroAppCopy.dashboard.totalEarnings)} value={loading ? "..." : formatCurrency(earnings.totalOrderEarnings, locale)} tone="gold" />
-        <MetricTile label={t(heroAppCopy.dashboard.payoutDue)} value={loading ? "..." : formatCurrency(earnings.pendingPayoutAmount, locale)} tone="sky" />
+        <MetricTile
+          label={t(heroAppCopy.dashboard.totalEarnings)}
+          value={loading ? "..." : formatCurrency(earnings.totalOrderEarnings, locale)}
+          tone="gold"
+        />
+        <MetricTile
+          label={t(heroAppCopy.dashboard.payoutDue)}
+          value={loading ? "..." : formatCurrency(earnings.pendingPayoutAmount, locale)}
+          tone="sky"
+        />
       </View>
 
       <SectionHeading
@@ -343,8 +357,8 @@ export default function HeroDashboard() {
           orders.map((order) => (
             <GlassPanel key={order.id} style={styles.orderCard}>
               <View style={[styles.orderTopRow, { flexDirection: rowDirection }]}>
-                <View style={[styles.orderBadge, { flexDirection: textDirection }]}>
-                  <Ionicons name="airplane" size={16} color={tayyarColors.skyLight} />
+                <View style={styles.orderBadge}>
+                  <Ionicons name="paper-plane-outline" size={16} color={tayyarColors.skyLight} />
                   <Text style={styles.orderBadgeText}>{order.orderNumber}</Text>
                 </View>
                 <StatusPill label={order.status} tone={hero?.status} />
@@ -370,7 +384,7 @@ export default function HeroDashboard() {
           ))
         ) : (
           <GlassPanel style={styles.emptyCard}>
-            <Ionicons name="sparkles" size={28} color={tayyarColors.goldLight} />
+            <Ionicons name="sparkles-outline" size={28} color={tayyarColors.goldLight} />
             <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: "center" }]}>
               {hero?.status === "OFFLINE" ? t(heroAppCopy.common.offline) : t(heroAppCopy.dashboard.noMissionsOnline)}
             </Text>
@@ -396,7 +410,6 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   heroCardHeader: {
-    flexDirection: "row-reverse",
     justifyContent: "space-between",
     gap: 16,
     alignItems: "flex-start",
@@ -417,7 +430,6 @@ const styles = StyleSheet.create({
     ...typeRamp.body,
   },
   heroMetaRow: {
-    flexDirection: "row-reverse",
     borderRadius: 22,
     borderWidth: 1,
     borderColor: tayyarColors.border,
@@ -479,14 +491,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   orderBadge: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "rgba(14,165,233,0.10)",
+    backgroundColor: "rgba(41,182,246,0.10)",
     borderWidth: 1,
-    borderColor: "rgba(14,165,233,0.18)",
+    borderColor: "rgba(41,182,246,0.18)",
   },
   orderBadgeText: {
     fontFamily: tayyarFonts.mono,

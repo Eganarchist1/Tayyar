@@ -1,8 +1,7 @@
 import { getApiBaseUrl } from "@tayyar/utils";
+import { heroBuildConfig } from "./build-config";
 
-export const heroApiBaseUrl = getApiBaseUrl(
-  process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:3001",
-);
+export const heroApiBaseUrl = getApiBaseUrl(heroBuildConfig.apiUrl || "http://10.0.2.2:3001");
 
 export const HERO_DEV_HEADERS = {
   "x-dev-role": "HERO",

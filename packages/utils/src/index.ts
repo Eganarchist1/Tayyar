@@ -103,7 +103,7 @@ export function getApiBaseUrl(explicit?: string) {
   const raw =
     explicit ||
     process.env.NEXT_PUBLIC_API_URL ||
-    process.env.EXPO_PUBLIC_API_URL ||
+    process.env.HERO_APP_API_URL ||
     "http://localhost:3001";
 
   const normalized = normalizeBaseUrl(raw);

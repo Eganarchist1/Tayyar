@@ -2,63 +2,41 @@ import { Platform, type TextStyle, type ViewStyle } from "react-native";
 import { formatLocalizedCurrency, type AppLocale } from "@tayyar/utils";
 
 export const midnightColors = {
-  canvas: "#030509",
-  base: "#070B14",
-  surface: "#0E1420",
-  surface2: "#141E2E",
-  overlay: "#1A2438",
-  elevated: "#213148",
-  sky: "#0EA5E9",
-  skyLight: "#38BDF8",
-  gold: "#F59E0B",
-  goldLight: "#FCD34D",
-  success: "#10B981",
+  canvas: "#05070D",
+  base: "#0A0F18",
+  surface: "#111827",
+  surface2: "#162032",
+  overlay: "#1C2A42",
+  elevated: "#22314D",
+  sky: "#29B6F6",
+  skyLight: "#7DD3FC",
+  gold: "#F5B640",
+  goldLight: "#F9D87A",
+  success: "#22C55E",
   warning: "#F97316",
-  danger: "#EF4444",
-  textPrimary: "#EEF4FF",
-  textSecondary: "#8BACC8",
-  textTertiary: "#5F7893",
-  border: "rgba(56,189,248,0.10)",
-  borderStrong: "rgba(56,189,248,0.22)",
-  glass: "rgba(10,16,29,0.78)",
-} as const;
-
-export const fajrColors = {
-  canvas: "#F4F7F6",
-  base: "#FFFFFF",
-  surface: "#FFFFFF",
-  surface2: "#EEF8F6",
-  overlay: "#E0F2EE",
-  elevated: "#C5E8E2",
-  sky: "#0D9488",
-  skyLight: "#2A9689",
-  gold: "#D4920A",
-  goldLight: "#FAD86A",
-  success: "#15803D",
-  warning: "#C2410C",
-  danger: "#B91C1C",
-  textPrimary: "#042F2E",
-  textSecondary: "#1E4D47",
-  textTertiary: "#4A7A74",
-  border: "rgba(13,148,136,0.25)",
-  borderStrong: "rgba(13,148,136,0.45)",
-  glass: "rgba(255,255,255,0.92)",
+  danger: "#F43F5E",
+  textPrimary: "#F5F7FB",
+  textSecondary: "#B7C4D8",
+  textTertiary: "#7F92AC",
+  border: "rgba(125, 211, 252, 0.12)",
+  borderStrong: "rgba(125, 211, 252, 0.24)",
+  glass: "rgba(15, 23, 42, 0.92)",
 } as const;
 
 export const tayyarColors = midnightColors;
 
 export const tayyarFonts = {
-  displayAr: "Cairo-900",
-  headingAr: "Cairo-700",
-  bodyAr: "IBMPlexSansArabic-400",
-  bodyMediumAr: "IBMPlexSansArabic-500",
-  bodySemiAr: "IBMPlexSansArabic-600",
-  displayEn: "Syne-700",
-  headingEn: "Syne-700",
-  bodyEn: "DMSans-400",
-  bodyMediumEn: "DMSans-500",
-  bodySemiEn: "DMSans-700",
-  mono: "DMMono-500",
+  displayAr: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  headingAr: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  bodyAr: Platform.select({ android: "sans-serif", default: "System" }) || "System",
+  bodyMediumAr: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  bodySemiAr: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  displayEn: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  headingEn: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  bodyEn: Platform.select({ android: "sans-serif", default: "System" }) || "System",
+  bodyMediumEn: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  bodySemiEn: Platform.select({ android: "sans-serif-medium", default: "System" }) || "System",
+  mono: Platform.select({ android: "monospace", default: "Menlo" }) || "monospace",
 } as const;
 
 export const tayyarSpacing = {
@@ -69,17 +47,17 @@ export const tayyarSpacing = {
 } as const;
 
 export const tayyarRadii = {
-  lg: 22,
+  lg: 20,
   xl: 28,
   pill: 999,
 } as const;
 
 export const surfaceShadow: ViewStyle = {
   shadowColor: "#000000",
-  shadowOpacity: 0.32,
-  shadowRadius: 24,
-  shadowOffset: { width: 0, height: 12 },
-  elevation: 12,
+  shadowOpacity: 0.28,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 10,
 };
 
 export const typeRamp = {
@@ -87,11 +65,13 @@ export const typeRamp = {
     fontSize: 30,
     lineHeight: 36,
     color: tayyarColors.textPrimary,
+    fontWeight: "700",
   } satisfies TextStyle,
   heading: {
     fontSize: 22,
-    lineHeight: 28,
+    lineHeight: 29,
     color: tayyarColors.textPrimary,
+    fontWeight: "700",
   } satisfies TextStyle,
   body: {
     fontSize: 14,
@@ -102,14 +82,16 @@ export const typeRamp = {
     fontSize: 14,
     lineHeight: 22,
     color: tayyarColors.textPrimary,
+    fontWeight: "600",
   } satisfies TextStyle,
   label: {
     fontSize: 11,
     lineHeight: 16,
-    letterSpacing: Platform.OS === "web" ? 0.4 : 0,
+    letterSpacing: Platform.OS === "web" ? 0.4 : 0.2,
     color: tayyarColors.textTertiary,
+    fontWeight: "600",
   } satisfies TextStyle,
-};
+} as const;
 
 export function getFontFamily(
   locale: AppLocale,
@@ -138,38 +120,35 @@ export function formatCurrency(amount: number, locale: AppLocale = "ar") {
   return formatLocalizedCurrency(amount, locale);
 }
 
-export function getHeroStatusMeta(
-  status?: string | null,
-  locale: AppLocale = "ar",
-) {
+export function getHeroStatusMeta(status?: string | null, locale: AppLocale = "ar") {
   switch (status) {
     case "ONLINE":
       return {
         label: locale === "ar" ? "جاهز" : "Online",
-        textColor: "#D1FAE5",
-        bgColor: "rgba(16,185,129,0.12)",
-        borderColor: "rgba(16,185,129,0.22)",
+        textColor: "#DCFCE7",
+        bgColor: "rgba(34,197,94,0.14)",
+        borderColor: "rgba(34,197,94,0.25)",
       };
     case "ON_DELIVERY":
       return {
         label: locale === "ar" ? "في مهمة" : "On mission",
-        textColor: "#FDE68A",
-        bgColor: "rgba(245,158,11,0.12)",
-        borderColor: "rgba(245,158,11,0.22)",
+        textColor: "#FEF3C7",
+        bgColor: "rgba(245,182,64,0.14)",
+        borderColor: "rgba(245,182,64,0.25)",
       };
     case "ON_BREAK":
       return {
         label: locale === "ar" ? "استراحة" : "On break",
-        textColor: "#FDBA74",
-        bgColor: "rgba(249,115,22,0.12)",
-        borderColor: "rgba(249,115,22,0.22)",
+        textColor: "#FED7AA",
+        bgColor: "rgba(249,115,22,0.14)",
+        borderColor: "rgba(249,115,22,0.25)",
       };
     default:
       return {
         label: locale === "ar" ? "غير متصل" : "Offline",
-        textColor: "#CBD5E1",
-        bgColor: "rgba(148,163,184,0.10)",
-        borderColor: "rgba(148,163,184,0.16)",
+        textColor: "#E2E8F0",
+        bgColor: "rgba(148,163,184,0.12)",
+        borderColor: "rgba(148,163,184,0.18)",
       };
   }
 }
