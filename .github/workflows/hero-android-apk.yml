@@ -55,7 +55,7 @@ jobs:
             "ndk;28.1.13356709"
 
       - name: Install npm dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Write native build config
         run: |

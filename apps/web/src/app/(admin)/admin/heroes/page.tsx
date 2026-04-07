@@ -276,7 +276,6 @@ export default function AdminHeroesPage() {
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [archiving, setArchiving] = React.useState(false);
-  const [assigning, setAssigning] = React.useState(false);
   const [feedback, setFeedback] = React.useState<{ tone: FeedbackTone; message: string } | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
   const [uploadState, setUploadState] = React.useState<UploadState>(createUploadState);
@@ -291,14 +290,14 @@ export default function AdminHeroesPage() {
     email: "",
     avatarUrl: "",
     zoneId: "",
-    status: "OFFLINE",
+    status: "ONLINE",
     isActive: true,
     nationalId: "",
     nationalIdFrontUrl: "",
     nationalIdBackUrl: "",
     licenseUrl: "",
     bloodType: "UNKNOWN",
-    verificationStatus: "PENDING",
+    verificationStatus: "APPROVED",
     verificationNote: "",
   });
   const [assignment, setAssignment] = React.useState({
@@ -406,14 +405,14 @@ export default function AdminHeroesPage() {
       email: "",
       avatarUrl: "",
       zoneId: "",
-      status: "OFFLINE",
+      status: "ONLINE",
       isActive: true,
       nationalId: "",
       nationalIdFrontUrl: "",
       nationalIdBackUrl: "",
       licenseUrl: "",
       bloodType: "UNKNOWN",
-      verificationStatus: "PENDING",
+      verificationStatus: "APPROVED",
       verificationNote: "",
     });
     setUploadState(createUploadState());
@@ -671,54 +670,6 @@ export default function AdminHeroesPage() {
       });
     } finally {
       setArchiving(false);
-    }
-  }
-
-  async function saveAssignment() {
-    if (!editing?.heroProfile?.id || !assignment.branchId) {
-      setFeedback({
-        tone: "gold",
-        message: tx(locale, "اختر الفرع أولًا.", "Select a branch first."),
-      });
-      return;
-    }
-
-    setAssigning(true);
-    setFeedback(null);
-    try {
-      await apiFetch(
-        `/v1/admin/heroes/${editing.heroProfile.id}/assignments`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            branchId: assignment.branchId,
-            model: assignment.model,
-            baseSalary: assignment.baseSalary ? Number(assignment.baseSalary) : undefined,
-            bonusPerOrder: assignment.bonusPerOrder ? Number(assignment.bonusPerOrder) : undefined,
-          }),
-        },
-        "ADMIN",
-      );
-
-      setAssignment({
-        branchId: "",
-        model: "POOL",
-        baseSalary: "",
-        bonusPerOrder: "",
-      });
-
-      await loadData();
-      setFeedback({
-        tone: "success",
-        message: tx(locale, "تم ربط الطيار بالفرع.", "Hero assignment saved."),
-      });
-    } catch (error) {
-      setFeedback({
-        tone: "gold",
-        message: error instanceof Error ? error.message : tx(locale, "تعذر حفظ التكليف.", "Could not save assignment."),
-      });
-    } finally {
-      setAssigning(false);
     }
   }
 
@@ -1123,6 +1074,39 @@ export default function AdminHeroesPage() {
                     </div>
                   </div>
 
+                  <div className="space-y-3 border-t border-[var(--border-default)] pt-4">
+                    <div>
+                      <div className="text-sm font-bold text-text-primary">
+                        {tx(locale, "التاجر والفرع", "Merchant and branch")}
+                      </div>
+                      <div className="mt-1 text-sm text-text-secondary">
+                        {tx(
+                          locale,
+                          "اختر الفرع ونوع الربط من البداية حتى يظهر الطيار في إسناد الطلبات المناسبة.",
+                          "Choose the branch and assignment model now so this hero appears in the right dispatch pool.",
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <select className={panelFieldClass} value={assignment.branchId} onChange={(event) => setAssignment((current) => ({ ...current, branchId: event.target.value }))}>
+                        <option value="">{tx(locale, "اختر التاجر والفرع", "Choose merchant and branch")}</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {(locale === "ar" ? branch.nameAr || branch.name : branch.name || branch.nameAr) +
+                              " • " +
+                              (locale === "ar" ? branch.merchant.nameAr || branch.merchant.name : branch.merchant.name || branch.merchant.nameAr || "")}
+                          </option>
+                        ))}
+                      </select>
+                      <select className={panelFieldClass} value={assignment.model} onChange={(event) => setAssignment((current) => ({ ...current, model: event.target.value as "POOL" | "DEDICATED" }))}>
+                        <option value="POOL">POOL</option>
+                        <option value="DEDICATED">DEDICATED</option>
+                      </select>
+                      <Input placeholder={tx(locale, "راتب أساسي اختياري", "Optional base salary")} value={assignment.baseSalary} onChange={(event) => setAssignment((current) => ({ ...current, baseSalary: event.target.value }))} />
+                      <Input placeholder={tx(locale, "حافز لكل طلب", "Bonus per order")} value={assignment.bonusPerOrder} onChange={(event) => setAssignment((current) => ({ ...current, bonusPerOrder: event.target.value }))} />
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setForm((current) => ({ ...current, isActive: !current.isActive }))}
@@ -1150,32 +1134,6 @@ export default function AdminHeroesPage() {
                   </div>
                 </form>
 
-                {editing?.heroProfile ? (
-                  <div className="space-y-3 border-t border-[var(--border-default)] pt-4">
-                    <div className="text-sm font-bold text-text-primary">{tx(locale, "إضافة تكليف", "Add assignment")}</div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <select className={panelFieldClass} value={assignment.branchId} onChange={(event) => setAssignment((current) => ({ ...current, branchId: event.target.value }))}>
-                        <option value="">{tx(locale, "اختر الفرع", "Choose branch")}</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {(locale === "ar" ? branch.nameAr || branch.name : branch.name || branch.nameAr) +
-                              " • " +
-                              (locale === "ar" ? branch.merchant.nameAr || branch.merchant.name : branch.merchant.name || branch.merchant.nameAr || "")}
-                          </option>
-                        ))}
-                      </select>
-                      <select className={panelFieldClass} value={assignment.model} onChange={(event) => setAssignment((current) => ({ ...current, model: event.target.value as "POOL" | "DEDICATED" }))}>
-                        <option value="POOL">POOL</option>
-                        <option value="DEDICATED">DEDICATED</option>
-                      </select>
-                      <Input placeholder={tx(locale, "راتب أساسي اختياري", "Optional base salary")} value={assignment.baseSalary} onChange={(event) => setAssignment((current) => ({ ...current, baseSalary: event.target.value }))} />
-                      <Input placeholder={tx(locale, "حافز لكل طلب", "Bonus per order")} value={assignment.bonusPerOrder} onChange={(event) => setAssignment((current) => ({ ...current, bonusPerOrder: event.target.value }))} />
-                    </div>
-                    <Button variant="secondary" fullWidth loading={assigning} onClick={saveAssignment}>
-                      {tx(locale, "ربط الطيار بالفرع", "Assign hero to branch")}
-                    </Button>
-                  </div>
-                ) : null}
                 {editing?.heroProfile ? (
                   <div className="space-y-4 border-t border-[var(--border-default)] pt-4">
                     <div className="flex items-center justify-between gap-3">

@@ -27,17 +27,41 @@ type UserRecord = {
   language: string;
   isActive: boolean;
   heroProfile?: {
+    id: string;
     status?: string | null;
+    verificationStatus?: string | null;
     zone?: { id: string; name: string; nameAr?: string | null } | null;
+    assignments?: Array<{
+      id: string;
+      model: "POOL" | "DEDICATED" | string;
+      branch: { id: string; name: string; nameAr?: string | null; merchantName: string };
+    }>;
   } | null;
   merchantOwnership?: { id: string; name: string; nameAr?: string | null } | null;
   branchManagement?: Array<{ id: string; name: string; nameAr?: string | null; merchantName: string }>;
+  supervisorZones?: Array<{ id: string; name: string; nameAr?: string | null }>;
+};
+
+type ZoneRecord = {
+  id: string;
+  name: string;
+  nameAr?: string | null;
+};
+
+type BranchRecord = {
+  id: string;
+  name: string;
+  nameAr?: string | null;
+  merchant: { id: string; name: string; nameAr?: string | null };
 };
 
 const roles = ["ALL", "ADMIN", "SUPERVISOR", "MERCHANT_OWNER", "BRANCH_MANAGER", "HERO"] as const;
 const statuses = ["ALL", "ACTIVE", "INACTIVE"] as const;
 const adminScopes = ["HEROES", "FINANCE", "USERS", "MERCHANTS", "BRANCHES", "OPERATIONS", "REPORTS", "MAPS"] as const;
 type AdminScope = (typeof adminScopes)[number];
+const heroStatuses = ["ONLINE", "OFFLINE", "ON_BREAK"] as const;
+const heroVerificationStatuses = ["APPROVED", "PENDING", "REJECTED"] as const;
+const assignmentModels = ["POOL", "DEDICATED"] as const;
 
 const tx = (locale: "ar" | "en", ar: string, en: string) => (locale === "ar" ? ar : en);
 
@@ -56,9 +80,15 @@ function statusLabel(locale: "ar" | "en", active: boolean) {
   return active ? tx(locale, "نشط", "Active") : tx(locale, "موقوف", "Inactive");
 }
 
+function pickLabel(locale: "ar" | "en", ar?: string | null, en?: string | null) {
+  return locale === "ar" ? ar || en || "--" : en || ar || "--";
+}
+
 export default function AdminUsersPage() {
   const { locale, direction } = useLocale();
   const [users, setUsers] = React.useState<UserRecord[]>([]);
+  const [zones, setZones] = React.useState<ZoneRecord[]>([]);
+  const [branches, setBranches] = React.useState<BranchRecord[]>([]);
   const [query, setQuery] = React.useState("");
   const [role, setRole] = React.useState<(typeof roles)[number]>("ALL");
   const [status, setStatus] = React.useState<(typeof statuses)[number]>("ALL");
@@ -79,6 +109,14 @@ export default function AdminUsersPage() {
     language: "ar",
     password: "",
     isActive: true,
+    zoneId: "",
+    heroStatus: "ONLINE" as (typeof heroStatuses)[number],
+    verificationStatus: "APPROVED" as (typeof heroVerificationStatuses)[number],
+    branchId: "",
+    assignmentModel: "POOL" as (typeof assignmentModels)[number],
+    baseSalary: "",
+    bonusPerOrder: "",
+    supervisorZoneIds: [] as string[],
   });
 
   const activationManagedCreate = !editing && !form.password.trim();
@@ -92,9 +130,18 @@ export default function AdminUsersPage() {
     setUsers(result);
   }, [query, role, status]);
 
+  const loadRoleOptions = React.useCallback(async () => {
+    const [zonesResult, branchesResult] = await Promise.all([
+      apiFetch<ZoneRecord[]>("/v1/admin/zones", undefined, "ADMIN"),
+      apiFetch<BranchRecord[]>("/v1/admin/branches?status=ACTIVE", undefined, "ADMIN"),
+    ]);
+    setZones(zonesResult);
+    setBranches(branchesResult);
+  }, []);
+
   React.useEffect(() => {
-    loadUsers().finally(() => setLoading(false));
-  }, [loadUsers]);
+    Promise.all([loadUsers(), loadRoleOptions()]).finally(() => setLoading(false));
+  }, [loadRoleOptions, loadUsers]);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
@@ -115,6 +162,14 @@ export default function AdminUsersPage() {
       language: locale,
       password: "",
       isActive: true,
+      zoneId: "",
+      heroStatus: "ONLINE",
+      verificationStatus: "APPROVED",
+      branchId: "",
+      assignmentModel: "POOL",
+      baseSalary: "",
+      bonusPerOrder: "",
+      supervisorZoneIds: [],
     });
   }
 
@@ -138,6 +193,15 @@ export default function AdminUsersPage() {
       language: user.language || "ar",
       password: "",
       isActive: user.isActive,
+      zoneId: user.heroProfile?.zone?.id || "",
+      heroStatus: (user.heroProfile?.status as (typeof heroStatuses)[number] | undefined) || "ONLINE",
+      verificationStatus:
+        (user.heroProfile?.verificationStatus as (typeof heroVerificationStatuses)[number] | undefined) || "APPROVED",
+      branchId: user.heroProfile?.assignments?.[0]?.branch.id || user.branchManagement?.[0]?.id || "",
+      assignmentModel: (user.heroProfile?.assignments?.[0]?.model as (typeof assignmentModels)[number] | undefined) || "POOL",
+      baseSalary: "",
+      bonusPerOrder: "",
+      supervisorZoneIds: user.supervisorZones?.map((zone) => zone.id) || [],
     });
     setError(null);
     setMessage(null);
@@ -165,6 +229,9 @@ export default function AdminUsersPage() {
             method: "PATCH",
             body: JSON.stringify({
               ...form,
+              status: form.heroStatus,
+              baseSalary: form.baseSalary ? Number(form.baseSalary) : undefined,
+              bonusPerOrder: form.bonusPerOrder ? Number(form.bonusPerOrder) : undefined,
               adminScopes: form.role === "ADMIN" ? form.adminScopes : [],
               password: form.password || undefined,
             }),
@@ -180,6 +247,9 @@ export default function AdminUsersPage() {
             method: "POST",
             body: JSON.stringify({
               ...form,
+              status: form.heroStatus,
+              baseSalary: form.baseSalary ? Number(form.baseSalary) : undefined,
+              bonusPerOrder: form.bonusPerOrder ? Number(form.bonusPerOrder) : undefined,
               isActive: activationManagedCreate ? false : form.isActive,
               adminScopes: form.role === "ADMIN" ? form.adminScopes : [],
             }),
@@ -529,6 +599,186 @@ export default function AdminUsersPage() {
                       );
                     })}
                   </div>
+                </div>
+              ) : null}
+
+              {form.role === "HERO" ? (
+                <div className="space-y-4 rounded-[20px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div>
+                    <div className="subtle-label">{tx(locale, "تشغيل الطيار", "Hero operations")}</div>
+                    <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                      {tx(
+                        locale,
+                        "حدد المنطقة والفرع والحالة حتى يظهر الطيار ضمن قائمة الإسناد الصحيحة.",
+                        "Choose the zone, branch, and readiness state so the hero appears in the correct assignment list.",
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="subtle-label">{tx(locale, "المنطقة", "Zone")}</span>
+                      <select
+                        className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                        value={form.zoneId}
+                        onChange={(event) => setForm((current) => ({ ...current, zoneId: event.target.value }))}
+                      >
+                        <option value="">{tx(locale, "اختر المنطقة", "Choose zone")}</option>
+                        {zones.map((zone) => (
+                          <option key={zone.id} value={zone.id}>
+                            {pickLabel(locale, zone.nameAr, zone.name)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="subtle-label">{tx(locale, "التاجر والفرع", "Merchant and branch")}</span>
+                      <select
+                        className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                        value={form.branchId}
+                        onChange={(event) => setForm((current) => ({ ...current, branchId: event.target.value }))}
+                      >
+                        <option value="">{tx(locale, "اختر الفرع", "Choose branch")}</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {pickLabel(locale, branch.nameAr, branch.name)} • {pickLabel(locale, branch.merchant.nameAr, branch.merchant.name)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="subtle-label">{tx(locale, "جاهزية الطيار", "Hero status")}</span>
+                      <select
+                        className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                        value={form.heroStatus}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            heroStatus: event.target.value as (typeof heroStatuses)[number],
+                          }))
+                        }
+                      >
+                        {heroStatuses.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="subtle-label">{tx(locale, "التوثيق", "Verification")}</span>
+                      <select
+                        className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                        value={form.verificationStatus}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            verificationStatus: event.target.value as (typeof heroVerificationStatuses)[number],
+                          }))
+                        }
+                      >
+                        {heroVerificationStatuses.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="subtle-label">{tx(locale, "نوع الربط", "Assignment model")}</span>
+                      <select
+                        className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                        value={form.assignmentModel}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            assignmentModel: event.target.value as (typeof assignmentModels)[number],
+                          }))
+                        }
+                      >
+                        {assignmentModels.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Input
+                      placeholder={tx(locale, "راتب أساسي اختياري", "Optional base salary")}
+                      value={form.baseSalary}
+                      onChange={(event) => setForm((current) => ({ ...current, baseSalary: event.target.value }))}
+                    />
+                    <Input
+                      placeholder={tx(locale, "عمولة لكل طلب", "Commission per order")}
+                      value={form.bonusPerOrder}
+                      onChange={(event) => setForm((current) => ({ ...current, bonusPerOrder: event.target.value }))}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {form.role === "SUPERVISOR" ? (
+                <div className="space-y-3 rounded-[20px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div>
+                    <div className="subtle-label">{tx(locale, "مناطق المشرف", "Supervisor zones")}</div>
+                    <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                      {tx(locale, "حدد المناطق التي يرى المشرف طلباتها وطياريها.", "Choose the zones this supervisor can operate.")}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {zones.map((zone) => {
+                      const checked = form.supervisorZoneIds.includes(zone.id);
+                      return (
+                        <button
+                          key={zone.id}
+                          type="button"
+                          onClick={() =>
+                            setForm((current) => ({
+                              ...current,
+                              supervisorZoneIds: checked
+                                ? current.supervisorZoneIds.filter((id) => id !== zone.id)
+                                : [...current.supervisorZoneIds, zone.id],
+                            }))
+                          }
+                          className={
+                            checked
+                              ? "rounded-[16px] border border-[var(--primary-500)] bg-[var(--primary-600)] bg-opacity-10 px-4 py-3 text-sm font-bold text-[var(--primary-600)]"
+                              : "rounded-[16px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-bold text-[var(--text-secondary)]"
+                          }
+                        >
+                          {pickLabel(locale, zone.nameAr, zone.name)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {form.role === "BRANCH_MANAGER" ? (
+                <div className="space-y-3 rounded-[20px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div>
+                    <div className="subtle-label">{tx(locale, "فرع المدير", "Manager branch")}</div>
+                    <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                      {tx(locale, "اربط مدير الفرع بالفرع الذي سيدير طلباته.", "Link this branch manager to the branch they operate.")}
+                    </div>
+                  </div>
+                  <select
+                    className="h-12 w-full rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)]"
+                    value={form.branchId}
+                    onChange={(event) => setForm((current) => ({ ...current, branchId: event.target.value }))}
+                  >
+                    <option value="">{tx(locale, "اختر الفرع", "Choose branch")}</option>
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {pickLabel(locale, branch.nameAr, branch.name)} • {pickLabel(locale, branch.merchant.nameAr, branch.merchant.name)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ) : null}
 

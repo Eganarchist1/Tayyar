@@ -46,6 +46,8 @@
     "@fastify/jwt": "^7.2.4",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/swagger-ui": "^2.1.0",
-    "@fastify/websocket": "^8.3.1"
+    "@fastify/websocket": "^8.3.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   }
 }

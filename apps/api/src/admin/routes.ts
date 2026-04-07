@@ -264,6 +264,7 @@ function buildAdminUserPayload(user: {
   heroProfile?: null | {
     id: string;
     status: HeroStatus;
+    verificationStatus?: HeroVerificationStatus | null;
     zone?: { id: string; name: string; nameAr: string | null } | null;
     assignments: Array<{
       id: string;
@@ -286,6 +287,9 @@ function buildAdminUserPayload(user: {
     nameAr: string | null;
     brand: { name: string; nameAr: string | null };
   }>;
+  supervisorZones?: Array<{
+    zone: { id: string; name: string; nameAr: string | null };
+  }>;
 }) {
   return {
     id: user.id,
@@ -302,6 +306,7 @@ function buildAdminUserPayload(user: {
       ? {
           id: user.heroProfile.id,
           status: user.heroProfile.status,
+          verificationStatus: user.heroProfile.verificationStatus || null,
           zone: user.heroProfile.zone
             ? {
                 id: user.heroProfile.zone.id,
@@ -334,6 +339,11 @@ function buildAdminUserPayload(user: {
       nameAr: branch.nameAr,
       merchantName: branch.brand.nameAr || branch.brand.name,
     })),
+    supervisorZones: (user.supervisorZones || []).map((assignment) => ({
+      id: assignment.zone.id,
+      name: assignment.zone.name,
+      nameAr: assignment.zone.nameAr,
+    })),
   };
 }
 
@@ -348,6 +358,131 @@ async function issueActivationIfNeeded(user: {
 
   const activation = await AuthService.resendActivation(user.email);
   return activation.activationUrl || null;
+}
+
+function normalizeIdArray(input?: unknown) {
+  if (!Array.isArray(input)) {
+    return undefined;
+  }
+
+  return Array.from(
+    new Set(
+      input
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function loadAdminUserForPayload(tx: Prisma.TransactionClient | typeof prisma, id: string) {
+  return tx.user.findUniqueOrThrow({
+    where: { id },
+    include: {
+      heroProfile: {
+        include: {
+          zone: true,
+          assignments: {
+            where: { isActive: true },
+            include: { branch: { include: { brand: true } } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      },
+      merchantOwnership: true,
+      branchManagement: {
+        include: { brand: true },
+      },
+      supervisorZones: {
+        include: { zone: true },
+        orderBy: { assignedAt: "desc" },
+      },
+    },
+  });
+}
+
+async function applyRoleAssignments(
+  tx: Prisma.TransactionClient,
+  params: {
+    userId: string;
+    role: UserRole;
+    supervisorZoneIds?: string[];
+    branchId?: string | null;
+  },
+) {
+  if (params.role === UserRole.SUPERVISOR) {
+    if (params.supervisorZoneIds !== undefined) {
+      await tx.supervisorZone.deleteMany({ where: { supervisorId: params.userId } });
+      if (params.supervisorZoneIds.length) {
+        await tx.supervisorZone.createMany({
+          data: params.supervisorZoneIds.map((zoneId) => ({
+            supervisorId: params.userId,
+            zoneId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+  } else {
+    await tx.supervisorZone.deleteMany({ where: { supervisorId: params.userId } });
+  }
+
+  if (params.role === UserRole.BRANCH_MANAGER) {
+    if (params.branchId !== undefined) {
+      await tx.branch.updateMany({
+        where: { managerId: params.userId },
+        data: { managerId: null },
+      });
+
+      if (params.branchId) {
+        await tx.branch.update({
+          where: { id: params.branchId },
+          data: { managerId: params.userId },
+        });
+      }
+    }
+  } else {
+    await tx.branch.updateMany({
+      where: { managerId: params.userId },
+      data: { managerId: null },
+    });
+  }
+}
+
+async function unassignActiveOrdersForHero(
+  tx: Prisma.TransactionClient,
+  heroId: string,
+  actorUserId?: string,
+  note = "Hero account deactivated by admin",
+) {
+  const activeOrders = await tx.order.findMany({
+    where: {
+      heroId,
+      status: {
+        in: ["ASSIGNED", "HERO_ACCEPTED", "PICKED_UP", "ON_WAY", "IN_TRANSIT", "ARRIVED"],
+      },
+    },
+    select: { id: true, orderNumber: true, trackingId: true, status: true },
+  });
+
+  for (const order of activeOrders) {
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        heroId: null,
+        status: "REQUESTED",
+        assignedAt: null,
+        statusHistory: {
+          create: {
+            status: "REQUESTED",
+            changedBy: actorUserId,
+            note,
+          },
+        },
+      },
+    });
+  }
+
+  return activeOrders;
 }
 
 async function upsertHeroAssignmentAndCompensation(params: {
@@ -788,6 +923,10 @@ export default async function adminRoutes(server: FastifyInstance) {
         branchManagement: {
           include: { brand: true },
         },
+        supervisorZones: {
+          include: { zone: true },
+          orderBy: { assignedAt: "desc" },
+        },
       },
       orderBy: [{ role: "asc" }, { createdAt: "desc" }],
     });
@@ -797,7 +936,24 @@ export default async function adminRoutes(server: FastifyInstance) {
 
   server.post("/users", async (request) => {
     const actor = request.user as { id?: string; email?: string };
-    const { name, email, phone, role, language, password, isActive, adminScopes } = parseObjectBody<{
+    const {
+      name,
+      email,
+      phone,
+      role,
+      language,
+      password,
+      isActive,
+      adminScopes,
+      zoneId,
+      status,
+      verificationStatus,
+      branchId,
+      assignmentModel,
+      baseSalary,
+      bonusPerOrder,
+      supervisorZoneIds,
+    } = parseObjectBody<{
       name?: string;
       email?: string;
       phone?: string | null;
@@ -806,6 +962,14 @@ export default async function adminRoutes(server: FastifyInstance) {
       password?: string;
       isActive?: boolean;
       adminScopes?: AdminPermissionScope[];
+      zoneId?: string | null;
+      status?: HeroStatus | string | null;
+      verificationStatus?: HeroVerificationStatus | null;
+      branchId?: string | null;
+      assignmentModel?: "DEDICATED" | "POOL" | null;
+      baseSalary?: number | null;
+      bonusPerOrder?: number | null;
+      supervisorZoneIds?: string[];
     }>(request.body);
 
     if (!name || !email || !role) {
@@ -813,8 +977,8 @@ export default async function adminRoutes(server: FastifyInstance) {
     }
 
     if (role === UserRole.HERO) {
-      const user = await prisma.$transaction(async (tx) =>
-        syncManagedHero(tx, {
+      const user = await prisma.$transaction(async (tx) => {
+        const nextHero = await syncManagedHero(tx, {
           role: UserRole.HERO,
           name: name.trim(),
           email: email.trim().toLowerCase(),
@@ -822,8 +986,25 @@ export default async function adminRoutes(server: FastifyInstance) {
           language,
           password,
           isActive: isActive ?? Boolean(password),
-        }),
-      );
+          zoneId: zoneId || null,
+          status: (status as HeroStatus | undefined) || HeroStatus.ONLINE,
+          verificationStatus: verificationStatus || HeroVerificationStatus.APPROVED,
+        });
+
+        if (branchId && nextHero.heroProfile) {
+          await upsertHeroAssignmentAndCompensation({
+            tx,
+            heroProfileId: nextHero.heroProfile.id,
+            userId: nextHero.id,
+            branchId,
+            model: assignmentModel || "POOL",
+            baseSalary: typeof baseSalary === "number" ? baseSalary : null,
+            bonusPerOrder: typeof bonusPerOrder === "number" ? bonusPerOrder : null,
+          });
+        }
+
+        return loadAdminUserForPayload(tx, nextHero.id);
+      });
       const activationUrl = await issueActivationIfNeeded(user);
 
       await recordAuditEvent({
@@ -842,15 +1023,32 @@ export default async function adminRoutes(server: FastifyInstance) {
       };
     }
 
-    const user = await AuthService.inviteOrCreateUser({
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      phone: normalizePhone(phone) || undefined,
-      role,
-      adminScopes: normalizeAdminScopes(adminScopes),
-      language,
-      password,
+    const { user, activationUrl } = await prisma.$transaction(async (tx) => {
+      const created = await syncManagedUser(tx, {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        phone: normalizePhone(phone),
+        role,
+        adminScopes: normalizeAdminScopes(adminScopes),
+        language,
+        password,
+        isActive: isActive ?? Boolean(password),
+      });
+
+      await applyRoleAssignments(tx, {
+        userId: created.id,
+        role,
+        supervisorZoneIds: normalizeIdArray(supervisorZoneIds),
+        branchId: branchId || null,
+      });
+
+      return {
+        user: await loadAdminUserForPayload(tx, created.id),
+        activationUrl: null,
+      };
     });
+
+    const resolvedActivationUrl = activationUrl || (await issueActivationIfNeeded(user));
 
     await recordAuditEvent({
       actorUserId: actor.id,
@@ -863,21 +1061,32 @@ export default async function adminRoutes(server: FastifyInstance) {
     });
 
     return {
-      ...buildAdminUserPayload({
-        ...user,
-        adminScopes: user.adminScopes || [],
-        merchantOwnership: null,
-        branchManagement: [],
-        heroProfile: null,
-      }),
-      activationUrl: "activationUrl" in user ? user.activationUrl || null : null,
+      ...buildAdminUserPayload(user),
+      activationUrl: resolvedActivationUrl,
     };
   });
 
   server.patch("/users/:id", async (request) => {
     const { id } = request.params as { id: string };
     const actor = request.user as { id?: string; email?: string };
-    const { name, email, phone, role, language, isActive, password, adminScopes } = parseObjectBody<{
+    const {
+      name,
+      email,
+      phone,
+      role,
+      language,
+      isActive,
+      password,
+      adminScopes,
+      zoneId,
+      status,
+      verificationStatus,
+      branchId,
+      assignmentModel,
+      baseSalary,
+      bonusPerOrder,
+      supervisorZoneIds,
+    } = parseObjectBody<{
       name?: string;
       email?: string;
       phone?: string | null;
@@ -886,6 +1095,14 @@ export default async function adminRoutes(server: FastifyInstance) {
       isActive?: boolean;
       password?: string;
       adminScopes?: AdminPermissionScope[];
+      zoneId?: string | null;
+      status?: HeroStatus | string | null;
+      verificationStatus?: HeroVerificationStatus | null;
+      branchId?: string | null;
+      assignmentModel?: "DEDICATED" | "POOL" | null;
+      baseSalary?: number | null;
+      bonusPerOrder?: number | null;
+      supervisorZoneIds?: string[];
     }>(request.body);
 
     const existing = await prisma.user.findUnique({
@@ -905,8 +1122,8 @@ export default async function adminRoutes(server: FastifyInstance) {
     const nextRole = role || existing.role;
 
     if (nextRole === UserRole.HERO) {
-      const updatedHero = await prisma.$transaction(async (tx) =>
-        syncManagedHero(tx, {
+      const updatedHero = await prisma.$transaction(async (tx) => {
+        const nextHero = await syncManagedHero(tx, {
           existingUserId: id,
           role: UserRole.HERO,
           name: name?.trim() || existing.name,
@@ -916,17 +1133,49 @@ export default async function adminRoutes(server: FastifyInstance) {
           password,
           isActive: isActive ?? existing.isActive,
           avatarUrl: existing.avatarUrl,
-          zoneId: existing.heroProfile?.zoneId || null,
-          status: existing.heroProfile?.status || HeroStatus.OFFLINE,
+          zoneId: zoneId === undefined ? existing.heroProfile?.zoneId || null : zoneId || null,
+          status: (status as HeroStatus | undefined) || existing.heroProfile?.status || HeroStatus.ONLINE,
           nationalId: existing.heroProfile?.nationalId || null,
           nationalIdFrontUrl: existing.heroProfile?.nationalIdFrontUrl || null,
           nationalIdBackUrl: existing.heroProfile?.nationalIdBackUrl || null,
           licenseUrl: existing.heroProfile?.licenseUrl || null,
           bloodType: existing.heroProfile?.bloodType || BloodType.UNKNOWN,
-          verificationStatus: existing.heroProfile?.verificationStatus || HeroVerificationStatus.PENDING,
+          verificationStatus:
+            verificationStatus || existing.heroProfile?.verificationStatus || HeroVerificationStatus.APPROVED,
           verificationNote: existing.heroProfile?.verificationNote || null,
-        }),
-      );
+        });
+
+        if (branchId && nextHero.heroProfile) {
+          await upsertHeroAssignmentAndCompensation({
+            tx,
+            heroProfileId: nextHero.heroProfile.id,
+            userId: nextHero.id,
+            branchId,
+            model: assignmentModel || "POOL",
+            baseSalary: typeof baseSalary === "number" ? baseSalary : null,
+            bonusPerOrder: typeof bonusPerOrder === "number" ? bonusPerOrder : null,
+          });
+        }
+
+        await applyRoleAssignments(tx, {
+          userId: nextHero.id,
+          role: UserRole.HERO,
+          supervisorZoneIds: [],
+          branchId: undefined,
+        });
+
+        const activeChangedToInactive = isActive === false && existing.isActive;
+        if (activeChangedToInactive && nextHero.heroProfile) {
+          await unassignActiveOrdersForHero(
+            tx,
+            nextHero.heroProfile.id,
+            actor.id,
+            "Hero user deactivated by admin",
+          );
+        }
+
+        return loadAdminUserForPayload(tx, nextHero.id);
+      });
 
       await recordAuditEvent({
         actorUserId: actor.id,
@@ -953,8 +1202,6 @@ export default async function adminRoutes(server: FastifyInstance) {
 
       return buildAdminUserPayload({
         ...updatedHero,
-        merchantOwnership: existing.merchantOwnership,
-        branchManagement: existing.branchManagement,
       });
     }
 
@@ -973,6 +1220,12 @@ export default async function adminRoutes(server: FastifyInstance) {
       });
 
       if (existing.heroProfile) {
+        await unassignActiveOrdersForHero(
+          tx,
+          existing.heroProfile.id,
+          actor.id,
+          "Hero role removed by admin",
+        );
         await tx.heroAssignment.updateMany({
           where: { heroId: existing.heroProfile.id, isActive: true },
           data: {
@@ -986,26 +1239,15 @@ export default async function adminRoutes(server: FastifyInstance) {
         });
       }
 
-      return tx.user.findUniqueOrThrow({
-        where: { id: nextUser.id },
-        include: {
-          heroProfile: {
-            include: {
-              zone: true,
-              assignments: {
-                where: { isActive: true },
-                include: { branch: { include: { brand: true } } },
-                orderBy: { createdAt: "desc" },
-              },
-            },
-          },
-          merchantOwnership: true,
-          branchManagement: {
-            include: { brand: true },
-          },
-        },
+        await applyRoleAssignments(tx, {
+          userId: nextUser.id,
+          role: nextRole,
+          supervisorZoneIds: normalizeIdArray(supervisorZoneIds),
+          branchId: branchId === undefined ? undefined : branchId || null,
+        });
+
+        return loadAdminUserForPayload(tx, nextUser.id);
       });
-    });
 
     await recordAuditEvent({
       actorUserId: actor.id,
