@@ -83,7 +83,7 @@ jobs:
           arch: x86_64
           profile: pixel_7
           script: |
-            set -euo pipefail
+            set -eu
             export LC_ALL=C.UTF-8
             capture_artifacts() {
               adb logcat -d > hero-logcat.txt || true
