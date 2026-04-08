@@ -1,10 +1,12 @@
 import React from "react";
-import { useNavigation } from "@react-navigation/native";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import {
+  Banner,
+  BottomActionDock,
+  EmptyState,
   GlassPanel,
-  LocaleTogglePill,
   MetricTile,
   SectionHeading,
   StatusPill,
@@ -12,35 +14,29 @@ import {
   TayyarScreen,
   TopBrandBar,
 } from "@/components/tayyar-ui";
-import { formatCurrency, getFontFamily, getHeroStatusMeta, tayyarColors, tayyarFonts, typeRamp } from "@/lib/design";
 import { heroAppCopy } from "@/lib/copy";
-import { useHeroLocale } from "@/lib/locale";
-import { heroFetch, heroLogout, isRetryableHeroError } from "@/lib/api";
+import { formatAppTime, formatCurrency, getFontFamily, getHeroStatusMeta, tayyarColors } from "@/lib/design";
+import { heroFetch, isRetryableHeroError } from "@/lib/api";
 import { enqueueHeroAction, flushQueuedHeroActions, getQueuedHeroActionCount } from "@/lib/action-queue";
 import { heroFeedback } from "@/lib/feedback";
+import { useHeroLocale } from "@/lib/locale";
 import { initBackgroundLocation, stopLocationTracking } from "@/hooks/useLocationTracking";
 import { useAuthStore } from "@/store/authStore";
 
 type HeroProfile = {
   id: string;
   status: "ONLINE" | "OFFLINE" | "ON_DELIVERY" | "ON_BREAK";
-  walletBalance?: number;
-  totalDeliveries?: number;
-  user?: {
-    name?: string | null;
-  };
+  activeVacationRequest?: { id: string } | null;
+  user?: { name?: string | null };
 };
 
 type ActiveOrder = {
   id: string;
   orderNumber: string;
   status: string;
-  deliveryAddress?: string | null;
   trackingId: string;
-  branch?: {
-    name?: string | null;
-    address?: string | null;
-  } | null;
+  deliveryAddress?: string | null;
+  branch?: { name?: string | null } | null;
 };
 
 type EarningsSummary = {
@@ -49,26 +45,23 @@ type EarningsSummary = {
   totalOrderEarnings: number;
 };
 
-const defaultEarnings: EarningsSummary = {
-  deliveredOrders: 0,
-  pendingPayoutAmount: 0,
-  totalOrderEarnings: 0,
-};
-
-export default function HeroDashboard() {
+export default function HeroHomeScreen() {
   const navigation = useNavigation<any>();
-  const { user, token, refreshToken, logout } = useAuthStore();
+  const { user, token } = useAuthStore();
   const { locale, direction, t } = useHeroLocale();
   const [hero, setHero] = React.useState<HeroProfile | null>(null);
   const [orders, setOrders] = React.useState<ActiveOrder[]>([]);
-  const [earnings, setEarnings] = React.useState<EarningsSummary>(defaultEarnings);
+  const [earnings, setEarnings] = React.useState<EarningsSummary>({
+    deliveredOrders: 0,
+    pendingPayoutAmount: 0,
+    totalOrderEarnings: 0,
+  });
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [statusLoading, setStatusLoading] = React.useState(false);
-  const [syncingQueue, setSyncingQueue] = React.useState(false);
   const [pendingSyncCount, setPendingSyncCount] = React.useState(0);
   const [lastSyncAt, setLastSyncAt] = React.useState<Date | null>(null);
-  const [feedback, setFeedback] = React.useState<{ tone: "success" | "gold"; message: string } | null>(null);
+  const [feedback, setFeedback] = React.useState<{ tone: "accent" | "warning" | "success"; title: string; body: string } | null>(null);
 
   const loadData = React.useCallback(async () => {
     const [heroData, orderData, earningsData] = await Promise.all([
@@ -76,65 +69,45 @@ export default function HeroDashboard() {
       heroFetch<ActiveOrder[]>("/v1/heroes/orders/active", undefined, token),
       heroFetch<EarningsSummary>("/v1/heroes/earnings/summary", undefined, token),
     ]);
-
     setHero(heroData);
     setOrders(orderData);
     setEarnings(earningsData);
     setLastSyncAt(new Date());
   }, [token]);
 
-  const refreshQueuedState = React.useCallback(async () => {
+  const refreshQueue = React.useCallback(async () => {
     setPendingSyncCount(await getQueuedHeroActionCount());
   }, []);
 
-  const syncQueuedActions = React.useCallback(
-    async (showFeedback = false) => {
-      setSyncingQueue(true);
-      try {
-        const result = await flushQueuedHeroActions(token);
-        await loadData();
-        await refreshQueuedState();
-        if (showFeedback && result.processed > 0) {
-          setFeedback({ tone: "success", message: t(heroAppCopy.common.syncedNow) });
-        }
-      } finally {
-        setSyncingQueue(false);
-      }
-    },
-    [loadData, refreshQueuedState, t, token],
-  );
-
   React.useEffect(() => {
-    let mounted = true;
-
+    let active = true;
     Promise.all([
       flushQueuedHeroActions(token).catch(() => ({ processed: 0, dropped: 0, remaining: 0 })),
       loadData(),
-      refreshQueuedState(),
+      refreshQueue(),
     ])
       .catch((error: unknown) => {
-        if (mounted) {
-          Alert.alert(
-            t(heroAppCopy.common.noData),
-            error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
-          );
+        if (active) {
+          setFeedback({
+            tone: "warning",
+            title: t(heroAppCopy.common.retry),
+            body: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+          });
         }
       })
       .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       });
-
     return () => {
-      mounted = false;
+      active = false;
     };
-  }, [loadData, refreshQueuedState, t, token]);
+  }, [loadData, refreshQueue, t, token]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     try {
-      await syncQueuedActions();
+      await loadData();
+      await refreshQueue();
     } catch (error) {
       Alert.alert(
         t(heroAppCopy.common.refresh),
@@ -143,24 +116,19 @@ export default function HeroDashboard() {
     } finally {
       setRefreshing(false);
     }
-  }, [syncQueuedActions, t]);
+  }, [loadData, refreshQueue, t]);
 
-  const handleToggleStatus = React.useCallback(async () => {
-    if (!hero) {
-      return;
-    }
-
+  async function handleToggleStatus() {
+    if (!hero) return;
     const nextStatus = hero.status === "OFFLINE" ? "ONLINE" : "OFFLINE";
     setStatusLoading(true);
     setFeedback(null);
-
     try {
       if (nextStatus === "ONLINE") {
-        await initBackgroundLocation();
+        await initBackgroundLocation(token);
       } else {
         await stopLocationTracking();
       }
-
       await heroFetch(
         "/v1/heroes/me/status",
         {
@@ -169,10 +137,9 @@ export default function HeroDashboard() {
         },
         token,
       );
-
       await loadData();
       heroFeedback.success();
-      setFeedback({ tone: "success", message: t(heroAppCopy.dashboard.statusUpdated) });
+      setFeedback({ tone: "success", title: t(heroAppCopy.home.ready), body: t(heroAppCopy.common.syncedNow) });
     } catch (error) {
       if (isRetryableHeroError(error)) {
         await enqueueHeroAction({
@@ -182,360 +149,146 @@ export default function HeroDashboard() {
           body: JSON.stringify({ status: nextStatus }),
         });
         setHero((current) => (current ? { ...current, status: nextStatus } : current));
-        await refreshQueuedState();
-        heroFeedback.warning();
-        setFeedback({ tone: "gold", message: t(heroAppCopy.common.queuedForSync) });
-        setStatusLoading(false);
-        return;
+        await refreshQueue();
+        setFeedback({
+          tone: "warning",
+          title: t(heroAppCopy.common.pendingSync),
+          body: t(heroAppCopy.common.queuedForSync),
+        });
+      } else {
+        setFeedback({
+          tone: "warning",
+          title: t(heroAppCopy.common.retry),
+          body: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+        });
       }
-
-      if (nextStatus === "ONLINE") {
-        await stopLocationTracking().catch(() => undefined);
-      }
-      heroFeedback.error();
-      setFeedback({
-        tone: "gold",
-        message: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
-      });
-      Alert.alert(
-        t(heroAppCopy.common.refresh),
-        error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
-      );
     } finally {
       setStatusLoading(false);
     }
-  }, [hero, loadData, refreshQueuedState, t, token]);
+  }
 
+  const pilotName = user?.name || hero?.user?.name || (locale === "ar" ? "الطيار" : "Pilot");
+  const currentMission = orders[0] || null;
   const activeStatus = getHeroStatusMeta(hero?.status, locale);
-  const pilotName = user?.name || hero?.user?.name || (locale === "ar" ? "أحمد" : "Ahmed");
   const rowDirection = direction === "rtl" ? "row-reverse" : "row";
   const align = direction === "rtl" ? "right" : "left";
-  const syncLabel = lastSyncAt
-    ? new Intl.DateTimeFormat(locale === "ar" ? "ar-EG-u-nu-latn" : "en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(lastSyncAt)
-    : "--";
+
+  if (loading) {
+    return <TayyarScreen scroll={false}><View /></TayyarScreen>;
+  }
 
   return (
     <TayyarScreen
-      contentContainerStyle={styles.content}
-      scroll
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tayyarColors.gold} />}
     >
       <TopBrandBar
         title={locale === "ar" ? `أهلاً ${pilotName.split(" ")[0]}` : `Hello ${pilotName.split(" ")[0]}`}
-        subtitle={t(heroAppCopy.dashboard.subtitle)}
-        rightSlot={
-          <View style={{ gap: 10 }}>
-            <LocaleTogglePill />
-            <TayyarButton
-              label={t(heroAppCopy.common.signOut)}
-              variant="outline"
-              onPress={async () => {
-                await heroLogout(refreshToken);
-                logout();
-              }}
-              icon={<Ionicons name="log-out-outline" size={18} color={tayyarColors.textPrimary} />}
-            />
-          </View>
-        }
+        subtitle={t(heroAppCopy.home.subtitle)}
+        rightSlot={<StatusPill label={activeStatus.label} />}
       />
 
-      <GlassPanel style={styles.heroCard} tone="sky">
-        <View style={[styles.heroCardHeader, { flexDirection: rowDirection }]}>
-          <View style={styles.heroCopy}>
-            <Text style={[styles.heroEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-              {t(heroAppCopy.dashboard.workState)}
-            </Text>
-            <Text style={[styles.heroTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: align }]}>
-              {hero?.status === "OFFLINE" ? t(heroAppCopy.dashboard.readyQuestion) : t(heroAppCopy.dashboard.onlineNow)}
-            </Text>
-            <Text style={[styles.heroSubtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
-              {hero?.status === "OFFLINE"
-                ? t(heroAppCopy.dashboard.offlineBody)
-                : t(heroAppCopy.dashboard.onlineBody)}
-            </Text>
-          </View>
-          <StatusPill label={activeStatus.label} />
-        </View>
+      {feedback ? <Banner title={feedback.title} body={feedback.body} tone={feedback.tone} /> : null}
+      {pendingSyncCount > 0 ? <Banner title={t(heroAppCopy.common.pendingSync)} body={t(heroAppCopy.common.queuedForSync)} tone="warning" /> : null}
+      {hero?.activeVacationRequest ? (
+        <Banner title={t(heroAppCopy.profile.activeRequest)} body={locale === "ar" ? "لديك إجازة معتمدة حالياً." : "You currently have an approved vacation."} tone="accent" />
+      ) : null}
 
-        <View style={[styles.heroMetaRow, { flexDirection: rowDirection }]}>
-          <View style={styles.heroMetaItem}>
-            <Text style={styles.heroMetaValue}>{orders.length}</Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
-              {t(heroAppCopy.dashboard.activeMissions)}
-            </Text>
-          </View>
-          <View style={styles.heroMetaDivider} />
-          <View style={styles.heroMetaItem}>
-            <Text style={styles.heroMetaValue}>{earnings.deliveredOrders}</Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
-              {t(heroAppCopy.dashboard.completedToday)}
-            </Text>
-          </View>
-          <View style={styles.heroMetaDivider} />
-          <View style={styles.heroMetaItem}>
-            <Text style={styles.heroMetaValue}>
-              {loading ? "..." : formatCurrency(earnings.totalOrderEarnings, locale)}
-            </Text>
-            <Text style={[styles.heroMetaLabel, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
-              {t(heroAppCopy.dashboard.todayIncome)}
-            </Text>
-          </View>
-        </View>
-
-        <TayyarButton
-          label={hero?.status === "OFFLINE" ? t(heroAppCopy.dashboard.turnOn) : t(heroAppCopy.dashboard.turnOff)}
-          onPress={handleToggleStatus}
-          loading={statusLoading}
-          icon={<Ionicons name={hero?.status === "OFFLINE" ? "power" : "pause-circle"} size={18} color="#071019" />}
+      <GlassPanel tone="accent">
+        <SectionHeading
+          eyebrow={t(heroAppCopy.home.ready)}
+          title={hero?.status === "OFFLINE" ? t(heroAppCopy.home.readyBody) : t(heroAppCopy.home.onlineBody)}
+          subtitle={lastSyncAt ? `${t(heroAppCopy.home.syncState)} • ${formatAppTime(lastSyncAt, locale)}` : t(heroAppCopy.common.loading)}
         />
-        <Text style={[styles.syncStamp, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-          {`${t(heroAppCopy.dashboard.lastSync)}: ${syncLabel}`}
-        </Text>
+        <BottomActionDock
+          primary={
+            <TayyarButton
+              label={hero?.status === "OFFLINE" ? t(heroAppCopy.home.goOnline) : t(heroAppCopy.home.goOffline)}
+              onPress={handleToggleStatus}
+              loading={statusLoading}
+              icon={<Ionicons name={hero?.status === "OFFLINE" ? "flash-outline" : "pause-outline"} size={18} color="#071019" />}
+            />
+          }
+        />
       </GlassPanel>
 
-      {pendingSyncCount ? (
-        <GlassPanel style={styles.syncCard} tone="gold">
-          <Text style={[styles.syncCardTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
-            {`${pendingSyncCount} ${t(heroAppCopy.common.pendingSync)}`}
-          </Text>
-          <Text style={[styles.syncCardCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
-            {t(heroAppCopy.dashboard.pendingSyncBody)}
-          </Text>
-          <TayyarButton
-            label={t(heroAppCopy.common.syncNow)}
-            variant="secondary"
-            loading={syncingQueue}
-            onPress={() => syncQueuedActions(true)}
-            icon={<Ionicons name="sync-outline" size={18} color={tayyarColors.textPrimary} />}
+      <View style={[styles.metricRow, { flexDirection: rowDirection }]}>
+        <MetricTile label={t(heroAppCopy.home.deliveriesToday)} value={earnings.deliveredOrders} />
+        <MetricTile label={t(heroAppCopy.home.pendingPayout)} value={formatCurrency(earnings.pendingPayoutAmount, locale)} tone="accent" />
+      </View>
+
+      <MetricTile label={t(heroAppCopy.home.totalEarnings)} value={formatCurrency(earnings.totalOrderEarnings, locale)} tone="success" />
+
+      <SectionHeading
+        eyebrow={t(heroAppCopy.home.currentMission)}
+        title={currentMission ? currentMission.orderNumber : t(heroAppCopy.home.noMissionTitle)}
+        subtitle={currentMission ? (currentMission.deliveryAddress || t(heroAppCopy.missions.address)) : t(heroAppCopy.home.noMissionBody)}
+      />
+
+      {currentMission ? (
+        <GlassPanel>
+          <View style={[styles.missionTop, { flexDirection: rowDirection }]}>
+            <View style={styles.missionCopy}>
+              <Text style={[styles.missionNumber, { textAlign: align }]}>{currentMission.orderNumber}</Text>
+              <Text style={[styles.missionBranch, { textAlign: align }]}>{currentMission.branch?.name || t(heroAppCopy.missions.branch)}</Text>
+            </View>
+            <StatusPill label={statusLabel(currentMission.status, locale)} tone={currentMission.status} />
+          </View>
+          <Text style={[styles.missionAddress, { textAlign: align }]}>{currentMission.deliveryAddress || t(heroAppCopy.common.noData)}</Text>
+          <BottomActionDock
+            primary={
+              <TayyarButton
+                label={t(heroAppCopy.home.openMission)}
+                onPress={() => navigation.navigate("OrderDetails", { id: currentMission.id })}
+                icon={<Ionicons name="arrow-forward-circle-outline" size={18} color="#071019" />}
+              />
+            }
           />
         </GlassPanel>
-      ) : null}
-
-      {feedback ? (
-        <GlassPanel style={styles.feedbackCard} tone={feedback.tone === "success" ? "success" : "gold"}>
-          <Text style={[styles.feedbackText, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-            {feedback.message}
-          </Text>
-        </GlassPanel>
-      ) : null}
-
-      <View style={[styles.metricsRow, { flexDirection: rowDirection }]}>
-        <MetricTile
-          label={t(heroAppCopy.dashboard.totalEarnings)}
-          value={loading ? "..." : formatCurrency(earnings.totalOrderEarnings, locale)}
-          tone="gold"
-        />
-        <MetricTile
-          label={t(heroAppCopy.dashboard.payoutDue)}
-          value={loading ? "..." : formatCurrency(earnings.pendingPayoutAmount, locale)}
-          tone="sky"
-        />
-      </View>
-
-      <SectionHeading
-        eyebrow={t(heroAppCopy.dashboard.quickView)}
-        title={t(heroAppCopy.dashboard.todayMetrics)}
-        subtitle={t(heroAppCopy.dashboard.subtitle)}
-      />
-
-      <View style={[styles.metricsRow, { flexDirection: rowDirection }]}>
-        <MetricTile label={t(heroAppCopy.dashboard.completedToday)} value={earnings.deliveredOrders} tone="success" />
-        <MetricTile label={t(heroAppCopy.wallet.availableBalance)} value={formatCurrency(hero?.walletBalance || 0, locale)} />
-      </View>
-
-      <SectionHeading
-        eyebrow={t(heroAppCopy.dashboard.missionFlow)}
-        title={t(heroAppCopy.dashboard.currentMissions)}
-        subtitle={t(heroAppCopy.dashboard.missionsSubtitle)}
-      />
-
-      <View style={styles.orderList}>
-        {orders.length ? (
-          orders.map((order) => (
-            <GlassPanel key={order.id} style={styles.orderCard}>
-              <View style={[styles.orderTopRow, { flexDirection: rowDirection }]}>
-                <View style={styles.orderBadge}>
-                  <Ionicons name="paper-plane-outline" size={16} color={tayyarColors.skyLight} />
-                  <Text style={styles.orderBadgeText}>{order.orderNumber}</Text>
-                </View>
-                <StatusPill label={order.status} tone={hero?.status} />
-              </View>
-
-              <Text style={[styles.orderMerchant, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
-                {order.branch?.name || t(heroAppCopy.dashboard.activeMissions)}
-              </Text>
-              <Text style={[styles.orderAddress, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
-                {order.deliveryAddress || order.branch?.address || t(heroAppCopy.common.noAddress)}
-              </Text>
-
-              <View style={[styles.orderFooter, { flexDirection: rowDirection }]}>
-                <Text style={styles.orderTracking}>#{order.trackingId.slice(0, 8)}</Text>
-                <TayyarButton
-                  label={t(heroAppCopy.dashboard.openMission)}
-                  variant="secondary"
-                  onPress={() => navigation.navigate("OrderDetails", { id: order.id })}
-                  icon={<Ionicons name={direction === "rtl" ? "arrow-forward" : "arrow-back"} size={16} color={tayyarColors.textPrimary} />}
-                />
-              </View>
-            </GlassPanel>
-          ))
-        ) : (
-          <GlassPanel style={styles.emptyCard}>
-            <Ionicons name="sparkles-outline" size={28} color={tayyarColors.goldLight} />
-            <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: "center" }]}>
-              {hero?.status === "OFFLINE" ? t(heroAppCopy.common.offline) : t(heroAppCopy.dashboard.noMissionsOnline)}
-            </Text>
-            <Text style={[styles.emptyCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: "center" }]}>
-              {hero?.status === "OFFLINE"
-                ? t(heroAppCopy.dashboard.noMissionsOffline)
-                : t(heroAppCopy.dashboard.noMissionsOnline)}
-            </Text>
-          </GlassPanel>
-        )}
-      </View>
-
-      <View style={styles.bottomSpacer} />
+      ) : (
+        <EmptyState icon="cube-outline" title={t(heroAppCopy.home.noMissionTitle)} body={t(heroAppCopy.home.noMissionBody)} />
+      )}
     </TayyarScreen>
   );
 }
 
+function statusLabel(status: string, locale: "ar" | "en") {
+  switch (status) {
+    case "PICKED_UP":
+    case "ON_WAY":
+    case "IN_TRANSIT":
+      return locale === "ar" ? "في الطريق" : "On the way";
+    case "ARRIVED":
+      return locale === "ar" ? "وصل" : "Arrived";
+    default:
+      return locale === "ar" ? "استلام" : "Pickup";
+  }
+}
+
 const styles = StyleSheet.create({
-  content: {
-    gap: 18,
+  metricRow: {
+    gap: 12,
   },
-  heroCard: {
-    gap: 18,
-  },
-  heroCardHeader: {
+  missionTop: {
     justifyContent: "space-between",
-    gap: 16,
     alignItems: "flex-start",
+    gap: 12,
   },
-  heroCopy: {
+  missionCopy: {
     flex: 1,
     gap: 6,
   },
-  heroEyebrow: {
-    ...typeRamp.label,
-    color: tayyarColors.goldLight,
-  },
-  heroTitle: {
-    fontSize: 28,
+  missionNumber: {
     color: tayyarColors.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
   },
-  heroSubtitle: {
-    ...typeRamp.body,
-  },
-  heroMetaRow: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: tayyarColors.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center",
-  },
-  heroMetaItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 4,
-  },
-  heroMetaDivider: {
-    width: 1,
-    height: 42,
-    backgroundColor: tayyarColors.border,
-  },
-  heroMetaValue: {
-    fontFamily: tayyarFonts.mono,
-    fontSize: 18,
-    color: tayyarColors.textPrimary,
-  },
-  heroMetaLabel: {
-    ...typeRamp.label,
-  },
-  syncStamp: {
-    ...typeRamp.label,
+  missionBranch: {
     color: tayyarColors.textSecondary,
+    fontSize: 14,
   },
-  syncCard: {
-    gap: 10,
-  },
-  syncCardTitle: {
-    fontSize: 18,
+  missionAddress: {
     color: tayyarColors.textPrimary,
-  },
-  syncCardCopy: {
-    ...typeRamp.body,
-  },
-  feedbackCard: {
-    gap: 8,
-  },
-  feedbackText: {
-    ...typeRamp.bodyStrong,
-  },
-  metricsRow: {
-    gap: 12,
-  },
-  orderList: {
-    gap: 12,
-  },
-  orderCard: {
-    gap: 14,
-  },
-  orderTopRow: {
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  orderBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(41,182,246,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(41,182,246,0.18)",
-  },
-  orderBadgeText: {
-    fontFamily: tayyarFonts.mono,
-    color: tayyarColors.skyLight,
-    fontSize: 12,
-  },
-  orderMerchant: {
-    fontSize: 18,
-    color: tayyarColors.textPrimary,
-  },
-  orderAddress: {
-    ...typeRamp.body,
-  },
-  orderFooter: {
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  orderTracking: {
-    fontFamily: tayyarFonts.mono,
-    fontSize: 12,
-    color: tayyarColors.textTertiary,
-  },
-  emptyCard: {
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 28,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    color: tayyarColors.textPrimary,
-  },
-  emptyCopy: {
-    ...typeRamp.body,
-  },
-  bottomSpacer: {
-    height: 8,
+    fontSize: 15,
+    lineHeight: 23,
   },
 });

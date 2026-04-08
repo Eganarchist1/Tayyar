@@ -4,13 +4,13 @@ import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import DashboardScreen from "@/app/(tabs)/index";
+import HomeScreen from "@/app/(tabs)/index";
+import MissionsScreen from "@/app/(tabs)/missions";
 import WalletScreen from "@/app/(tabs)/wallet";
-import HrScreen from "@/app/(tabs)/explore";
+import ProfileScreen from "@/app/(tabs)/profile";
 import LoginScreen from "@/app/login";
 import OrderDetailsScreen from "@/app/order/[id]";
 import { HeroLoadingShell } from "@/components/tayyar-ui";
-import { heroAppCopy } from "@/lib/copy";
 import { getFontFamily, tayyarColors } from "@/lib/design";
 import { HeroLocaleProvider, useHeroLocale } from "@/lib/locale";
 import { registerHeroDevice } from "@/lib/device-registration";
@@ -32,54 +32,54 @@ const navigationTheme = {
   },
 };
 
-function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
-  const { locale, direction, t } = useHeroLocale();
-  const rowDirection = direction === "rtl" ? "row-reverse" : "row";
+function DriverTabBar({ state, navigation }: BottomTabBarProps) {
+  const { locale, direction } = useHeroLocale();
+  const row = direction === "rtl" ? "row-reverse" : "row";
+
+  const labels: Record<keyof HeroMainTabParamList, string> = {
+    Home: locale === "ar" ? "الرئيسية" : "Home",
+    Missions: locale === "ar" ? "المهام" : "Missions",
+    Wallet: locale === "ar" ? "المحفظة" : "Wallet",
+    Profile: locale === "ar" ? "الحساب" : "Profile",
+  };
+
+  const icons: Record<keyof HeroMainTabParamList, string> = {
+    Home: "grid-outline",
+    Missions: "map-outline",
+    Wallet: "wallet-outline",
+    Profile: "person-outline",
+  };
 
   return (
     <View style={styles.tabWrap}>
-      <View style={[styles.tabBar, { flexDirection: rowDirection }]}>
+      <View style={[styles.tabBar, { flexDirection: row }]}>
         {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const label =
-            route.name === "Dashboard"
-              ? t(heroAppCopy.dashboard.title)
-              : route.name === "Wallet"
-                ? t(heroAppCopy.wallet.title)
-                : locale === "ar"
-                  ? "الموارد"
-                  : "HR";
-
-          const iconName =
-            route.name === "Dashboard"
-              ? "compass-outline"
-              : route.name === "Wallet"
-                ? "wallet-outline"
-                : "calendar-outline";
-
+          const tabName = route.name as keyof HeroMainTabParamList;
+          const focused = state.index === index;
           return (
-            <Pressable
-              key={route.key}
-              onPress={() => navigation.navigate(route.name as never)}
-              style={[styles.tabButton, isFocused && styles.tabButtonActive]}
-            >
-              <View style={[styles.tabIconWrap, isFocused && styles.tabIconWrapActive]}>
-                <Ionicons
-                  name={iconName}
-                  size={20}
-                  color={isFocused ? "#071019" : tayyarColors.textSecondary}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { fontFamily: getFontFamily(locale, "bodyMedium") },
-                  isFocused && styles.tabLabelActive,
-                ]}
+            <View key={route.key} style={styles.tabItem}>
+              <Pressable
+                onPress={() => navigation.navigate(route.name as never)}
+                style={({ pressed }) => [styles.tabPressable, pressed && styles.tabPressablePressed]}
               >
-                {label}
-              </Text>
-            </Pressable>
+                <View style={[styles.tabPressFrame, focused && styles.tabPressFrameActive]}>
+                  <Ionicons
+                    name={icons[tabName]}
+                    size={22}
+                    color={focused ? "#071019" : tayyarColors.textSecondary}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.tabText,
+                    { fontFamily: getFontFamily(locale, "bodySemi") },
+                    focused && styles.tabTextActive,
+                  ]}
+                >
+                  {labels[tabName]}
+                </Text>
+              </Pressable>
+            </View>
           );
         })}
       </View>
@@ -89,10 +89,11 @@ function TayyarTabBar({ state, navigation }: BottomTabBarProps) {
 
 function MainTabs() {
   return (
-    <Tabs.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <TayyarTabBar {...props} />}>
-      <Tabs.Screen name="Dashboard" component={DashboardScreen} />
+    <Tabs.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <DriverTabBar {...props} />}>
+      <Tabs.Screen name="Home" component={HomeScreen} />
+      <Tabs.Screen name="Missions" component={MissionsScreen} />
       <Tabs.Screen name="Wallet" component={WalletScreen} />
-      <Tabs.Screen name="Hr" component={HrScreen} />
+      <Tabs.Screen name="Profile" component={ProfileScreen} />
     </Tabs.Navigator>
   );
 }
@@ -108,10 +109,7 @@ function AppNavigator() {
   }, []);
 
   React.useEffect(() => {
-    if (!hasHydrated || !user || !token) {
-      return;
-    }
-
+    if (!hasHydrated || !user || !token) return;
     registerHeroDevice(token).catch(() => undefined);
   }, [hasHydrated, token, user]);
 
@@ -123,9 +121,7 @@ function AppNavigator() {
     <>
       <StatusBar barStyle="light-content" backgroundColor={tayyarColors.canvas} />
       <NavigationContainer theme={navigationTheme}>
-        <RootStack.Navigator
-          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: tayyarColors.canvas } }}
-        >
+        <RootStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: tayyarColors.canvas } }}>
           {token ? (
             <>
               <RootStack.Screen name="MainTabs" component={MainTabs} />
@@ -151,46 +147,48 @@ export default function App() {
 const styles = StyleSheet.create({
   tabWrap: {
     position: "absolute",
+    left: 14,
+    right: 14,
     bottom: 14,
-    left: 16,
-    right: 16,
   },
   tabBar: {
-    borderRadius: 26,
+    borderRadius: 28,
+    paddingHorizontal: 10,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: "rgba(12, 21, 33, 0.98)",
     borderWidth: 1,
     borderColor: tayyarColors.border,
-    backgroundColor: "rgba(17,24,39,0.96)",
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 10,
+    gap: 8,
   },
-  tabButton: {
+  tabItem: {
     flex: 1,
     alignItems: "center",
+  },
+  tabPressable: {
+    width: "100%",
+    alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
-    borderRadius: 18,
   },
-  tabButtonActive: {
-    backgroundColor: "rgba(41,182,246,0.08)",
+  tabPressablePressed: {
+    opacity: 0.92,
   },
-  tabIconWrap: {
-    width: 42,
-    height: 42,
+  tabPressFrame: {
+    width: 48,
+    height: 48,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
-  tabIconWrapActive: {
+  tabPressFrameActive: {
     backgroundColor: tayyarColors.gold,
   },
-  tabLabel: {
+  tabText: {
     fontSize: 11,
     color: tayyarColors.textTertiary,
   },
-  tabLabelActive: {
+  tabTextActive: {
     color: tayyarColors.textPrimary,
   },
 });

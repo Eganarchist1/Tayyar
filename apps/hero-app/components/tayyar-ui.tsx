@@ -12,9 +12,11 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import {
-  getHeroStatusMeta,
   getFontFamily,
+  getHeroStatusMeta,
+  heroTokens,
   surfaceShadow,
   tayyarColors,
   tayyarRadii,
@@ -31,6 +33,8 @@ function textAlign(direction: "rtl" | "ltr") {
 function rowDirection(direction: "rtl" | "ltr") {
   return direction === "rtl" ? "row-reverse" : "row";
 }
+
+const midnightInk = "#071019";
 
 export function TayyarScreen({
   children,
@@ -57,8 +61,8 @@ export function TayyarScreen({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-      <View style={styles.bgGlowTop} />
-      <View style={styles.bgGlowBottom} />
+      <View style={styles.glowSky} />
+      <View style={styles.glowGold} />
       {content}
     </SafeAreaView>
   );
@@ -66,11 +70,12 @@ export function TayyarScreen({
 
 export function HeroLoadingShell({ message }: { message?: string }) {
   const { locale, t } = useHeroLocale();
-
   return (
     <TayyarScreen scroll={false} contentContainerStyle={styles.loadingWrap}>
-      <View style={styles.loadingOrb} />
-      <ActivityIndicator color={tayyarColors.skyLight} size="small" />
+      <View style={styles.loadingMark}>
+        <Ionicons name="paper-plane" size={28} color={midnightInk} />
+      </View>
+      <ActivityIndicator color={tayyarColors.skyLight} />
       <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
         {message || t(heroAppCopy.common.restoringSession)}
       </Text>
@@ -85,16 +90,16 @@ export function GlassPanel({
 }: {
   children: React.ReactNode;
   style?: ViewStyle | ViewStyle[];
-  tone?: "default" | "gold" | "sky" | "success";
+  tone?: "default" | "accent" | "success" | "warning";
 }) {
   const toneStyle =
-    tone === "gold"
-      ? styles.goldPanel
-      : tone === "sky"
-        ? styles.skyPanel
-        : tone === "success"
-          ? styles.successPanel
-          : styles.defaultPanel;
+    tone === "accent"
+      ? styles.panelAccent
+      : tone === "success"
+        ? styles.panelSuccess
+        : tone === "warning"
+          ? styles.panelWarning
+          : styles.panelDefault;
 
   return <View style={[styles.panel, toneStyle, style]}>{children}</View>;
 }
@@ -109,16 +114,10 @@ export function SectionHeading({
   subtitle?: string;
 }) {
   const { locale, direction } = useHeroLocale();
-
   return (
     <View style={styles.sectionHeading}>
       {eyebrow ? (
-        <Text
-          style={[
-            styles.eyebrow,
-            { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
-          ]}
-        >
+        <Text style={[styles.eyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>
           {eyebrow}
         </Text>
       ) : null}
@@ -134,6 +133,34 @@ export function SectionHeading({
   );
 }
 
+export function TopBrandBar({
+  title,
+  subtitle,
+  rightSlot,
+}: {
+  title: string;
+  subtitle: string;
+  rightSlot?: React.ReactNode;
+}) {
+  const { locale, direction, t } = useHeroLocale();
+  return (
+    <View style={[styles.topBar, { flexDirection: rowDirection(direction) }]}>
+      <View style={styles.topBarCopy}>
+        <Text style={[styles.brandMark, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>
+          {t(heroAppCopy.common.heroBrand)}
+        </Text>
+        <Text style={[styles.topBarTitle, { fontFamily: getFontFamily(locale, "display"), textAlign: textAlign(direction) }]}>
+          {title}
+        </Text>
+        <Text style={[styles.topBarSubtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>
+          {subtitle}
+        </Text>
+      </View>
+      {rightSlot}
+    </View>
+  );
+}
+
 export function MetricTile({
   label,
   value,
@@ -141,18 +168,12 @@ export function MetricTile({
 }: {
   label: string;
   value: string | number;
-  tone?: "default" | "gold" | "success" | "sky";
+  tone?: "default" | "accent" | "success" | "warning";
 }) {
   const { locale, direction } = useHeroLocale();
-
   return (
-    <GlassPanel style={styles.metricTile} tone={tone === "sky" ? "sky" : tone}>
-      <Text
-        style={[
-          styles.metricLabel,
-          { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
-        ]}
-      >
+    <GlassPanel style={styles.metricTile} tone={tone}>
+      <Text style={[styles.metricLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>
         {label}
       </Text>
       <Text style={[styles.metricValue, { textAlign: textAlign(direction) }]}>{value}</Text>
@@ -160,31 +181,92 @@ export function MetricTile({
   );
 }
 
-export function StatusPill({
-  label,
-  tone,
-}: {
-  label?: string;
-  tone?: string | null;
-}) {
+export function StatusPill({ label, tone }: { label?: string; tone?: string | null }) {
   const { locale, direction } = useHeroLocale();
   const meta = getHeroStatusMeta(tone || label, locale);
-
   return (
     <View
       style={[
         styles.statusPill,
         {
-          backgroundColor: meta.bgColor,
-          borderColor: meta.borderColor,
+          backgroundColor: meta.bg,
+          borderColor: meta.border,
           flexDirection: rowDirection(direction),
         },
       ]}
     >
-      <View style={[styles.statusDot, { backgroundColor: meta.textColor }]} />
-      <Text style={[styles.statusPillText, { color: meta.textColor, fontFamily: getFontFamily(locale, "bodySemi") }]}>
+      <View style={[styles.statusDot, { backgroundColor: meta.text }]} />
+      <Text style={[styles.statusPillText, { color: meta.text, fontFamily: getFontFamily(locale, "bodySemi") }]}>
         {label || meta.label}
       </Text>
+    </View>
+  );
+}
+
+export function Banner({
+  title,
+  body,
+  tone = "accent",
+}: {
+  title: string;
+  body: string;
+  tone?: "accent" | "success" | "warning";
+}) {
+  const { locale, direction } = useHeroLocale();
+  return (
+    <GlassPanel tone={tone} style={styles.banner}>
+      <Text style={[styles.bannerTitle, { fontFamily: getFontFamily(locale, "bodySemi"), textAlign: textAlign(direction) }]}>
+        {title}
+      </Text>
+      <Text style={[styles.bannerBody, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>
+        {body}
+      </Text>
+    </GlassPanel>
+  );
+}
+
+export function EmptyState({
+  icon,
+  title,
+  body,
+}: {
+  icon: string;
+  title: string;
+  body: string;
+}) {
+  const { locale } = useHeroLocale();
+  return (
+    <GlassPanel style={styles.emptyState}>
+      <View style={styles.emptyIcon}>
+        <Ionicons name={icon} size={24} color={tayyarColors.goldLight} />
+      </View>
+      <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading") }]}>{title}</Text>
+      <Text style={[styles.emptyBody, { fontFamily: getFontFamily(locale, "body") }]}>{body}</Text>
+    </GlassPanel>
+  );
+}
+
+export function LocaleTogglePill() {
+  const { locale, setLocale } = useHeroLocale();
+  return (
+    <View style={styles.localeToggle}>
+      {(["ar", "en"] as const).map((option) => (
+        <Pressable
+          key={option}
+          onPress={() => setLocale(option)}
+          style={[styles.localeButton, locale === option && styles.localeButtonActive]}
+        >
+          <Text
+            style={[
+              styles.localeText,
+              { fontFamily: getFontFamily(option, "bodySemi") },
+              locale === option && styles.localeTextActive,
+            ]}
+          >
+            {option === "ar" ? "العربية" : "English"}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -203,7 +285,7 @@ export function TayyarButton({
   onPress?: (event: GestureResponderEvent) => void;
   icon?: React.ReactNode;
   loading?: boolean;
-  variant?: "primary" | "secondary" | "outline";
+  variant?: "primary" | "secondary" | "outline" | "ghost";
   style?: ViewStyle | ViewStyle[];
   textStyle?: TextStyle;
   disabled?: boolean;
@@ -214,7 +296,9 @@ export function TayyarButton({
       ? styles.primaryButton
       : variant === "outline"
         ? styles.outlineButton
-        : styles.secondaryButton;
+        : variant === "ghost"
+          ? styles.ghostButton
+          : styles.secondaryButton;
 
   return (
     <Pressable
@@ -237,8 +321,9 @@ export function TayyarButton({
       <Text
         style={[
           styles.buttonText,
-          { fontFamily: getFontFamily(locale, "heading") },
+          { fontFamily: getFontFamily(locale, "bodySemi") },
           variant === "primary" ? styles.primaryButtonText : styles.secondaryButtonText,
+          variant === "ghost" && styles.ghostButtonText,
           textStyle,
         ]}
       >
@@ -248,77 +333,63 @@ export function TayyarButton({
   );
 }
 
-export function LocaleTogglePill() {
-  const { locale, setLocale } = useHeroLocale();
-
+export function BottomActionDock({
+  primary,
+  secondary,
+}: {
+  primary: React.ReactNode;
+  secondary?: React.ReactNode;
+}) {
   return (
-    <View style={styles.localeToggle}>
-      {(["ar", "en"] as const).map((option) => (
-        <Pressable
-          key={option}
-          onPress={() => setLocale(option)}
-          style={[styles.localeToggleButton, locale === option && styles.localeToggleButtonActive]}
-        >
-          <Text
-            style={[
-              styles.localeToggleText,
-              { fontFamily: getFontFamily(option, "bodySemi") },
-              locale === option && styles.localeToggleTextActive,
-            ]}
-          >
-            {option === "ar" ? "العربية" : "English"}
-          </Text>
-        </Pressable>
+    <View style={styles.bottomDock}>
+      {secondary ? <View style={styles.bottomDockSecondary}>{secondary}</View> : null}
+      <View style={styles.bottomDockPrimary}>{primary}</View>
+    </View>
+  );
+}
+
+export function OtpCodeInput({
+  value,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+}) {
+  const { direction } = useHeroLocale();
+  return (
+    <View style={[styles.otpRow, { flexDirection: rowDirection(direction) }]}>
+      {[0, 1, 2, 3].map((index) => (
+        <View key={index} style={[styles.otpBox, value[index] ? styles.otpBoxFilled : null]}>
+          <Text style={[styles.otpDigit, { fontFamily: getFontFamily("en", "mono") }]}>{value[index] || ""}</Text>
+        </View>
       ))}
     </View>
   );
 }
 
-export function TopBrandBar({
-  title,
-  subtitle,
-  rightSlot,
+export function FormField({
+  label,
+  children,
+  hint,
 }: {
-  title: string;
-  subtitle: string;
-  rightSlot?: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+  hint?: string;
 }) {
-  const { locale, direction, t } = useHeroLocale();
-
+  const { locale, direction } = useHeroLocale();
   return (
-    <View style={[styles.topBar, { flexDirection: rowDirection(direction) }]}>
-      <View style={styles.topBarCopy}>
-        <Text
-          style={[
-            styles.brandMark,
-            { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) },
-          ]}
-        >
-          {t(heroAppCopy.common.heroBrand)}
+    <View style={styles.formField}>
+      <Text style={[styles.fieldLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: textAlign(direction) }]}>
+        {label}
+      </Text>
+      {children}
+      {hint ? (
+        <Text style={[styles.fieldHint, { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) }]}>
+          {hint}
         </Text>
-        <Text
-          style={[
-            styles.topBarTitle,
-            { fontFamily: getFontFamily(locale, "display"), textAlign: textAlign(direction) },
-          ]}
-        >
-          {title}
-        </Text>
-        <Text
-          style={[
-            styles.topBarSubtitle,
-            { fontFamily: getFontFamily(locale, "body"), textAlign: textAlign(direction) },
-          ]}
-        >
-          {subtitle}
-        </Text>
-      </View>
-      {rightSlot}
+      ) : null}
     </View>
   );
 }
-
-const midnightInk = "#071019";
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -326,49 +397,49 @@ const styles = StyleSheet.create({
     backgroundColor: tayyarColors.canvas,
   },
   screenContent: {
-    paddingHorizontal: tayyarSpacing.lg,
-    paddingBottom: 112,
-    paddingTop: 12,
     gap: tayyarSpacing.lg,
+    paddingTop: tayyarSpacing.sm,
+    paddingHorizontal: tayyarSpacing.lg,
+    paddingBottom: 120,
   },
-  bgGlowTop: {
+  glowSky: {
     position: "absolute",
-    top: -110,
+    top: -90,
     left: -40,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    backgroundColor: "rgba(41,182,246,0.12)",
+    width: 240,
+    height: 240,
+    borderRadius: 240,
+    backgroundColor: "rgba(31,182,255,0.12)",
   },
-  bgGlowBottom: {
+  glowGold: {
     position: "absolute",
-    bottom: -140,
+    bottom: -130,
     right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    backgroundColor: "rgba(245,182,64,0.08)",
+    width: 240,
+    height: 240,
+    borderRadius: 240,
+    backgroundColor: "rgba(246,183,60,0.08)",
   },
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 14,
+    gap: tayyarSpacing.md,
   },
-  loadingOrb: {
+  loadingMark: {
     width: 68,
     height: 68,
-    borderRadius: 24,
-    backgroundColor: tayyarColors.surface2,
-    borderWidth: 1,
-    borderColor: tayyarColors.borderStrong,
+    borderRadius: 22,
+    backgroundColor: tayyarColors.gold,
+    alignItems: "center",
+    justifyContent: "center",
   },
   loadingText: {
     ...typeRamp.body,
   },
   topBar: {
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: tayyarSpacing.md,
   },
   topBarCopy: {
@@ -377,8 +448,7 @@ const styles = StyleSheet.create({
   },
   brandMark: {
     ...typeRamp.label,
-    color: tayyarColors.goldLight,
-    letterSpacing: 1,
+    color: heroTokens.text.accent,
   },
   topBarTitle: {
     ...typeRamp.hero,
@@ -387,30 +457,31 @@ const styles = StyleSheet.create({
     ...typeRamp.body,
   },
   panel: {
-    borderRadius: tayyarRadii.xl,
+    borderRadius: tayyarRadii.lg,
     borderWidth: 1,
     borderColor: tayyarColors.border,
     padding: tayyarSpacing.lg,
-    overflow: "hidden",
+    gap: tayyarSpacing.md,
     ...surfaceShadow,
   },
-  defaultPanel: {
+  panelDefault: {
     backgroundColor: tayyarColors.glass,
   },
-  goldPanel: {
-    backgroundColor: "rgba(38, 28, 8, 0.96)",
+  panelAccent: {
+    backgroundColor: heroTokens.surface.accent,
   },
-  skyPanel: {
-    backgroundColor: "rgba(9, 22, 37, 0.96)",
+  panelSuccess: {
+    backgroundColor: heroTokens.surface.success,
   },
-  successPanel: {
-    backgroundColor: "rgba(6, 27, 19, 0.96)",
+  panelWarning: {
+    backgroundColor: heroTokens.surface.warning,
   },
   sectionHeading: {
     gap: 6,
   },
   eyebrow: {
     ...typeRamp.label,
+    color: heroTokens.text.accent,
   },
   heading: {
     ...typeRamp.heading,
@@ -420,23 +491,22 @@ const styles = StyleSheet.create({
   },
   metricTile: {
     flex: 1,
-    minHeight: 112,
+    minHeight: 108,
     justifyContent: "space-between",
   },
   metricLabel: {
     ...typeRamp.label,
-    color: tayyarColors.textSecondary,
   },
   metricValue: {
-    fontFamily: getFontFamily("en", "mono"),
     fontSize: 24,
     color: tayyarColors.textPrimary,
+    fontFamily: "monospace",
   },
   statusPill: {
     alignItems: "center",
     gap: 8,
-    borderRadius: tayyarRadii.pill,
     borderWidth: 1,
+    borderRadius: tayyarRadii.pill,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -448,19 +518,72 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 12,
   },
-  button: {
-    minHeight: 58,
-    borderRadius: tayyarRadii.lg,
+  banner: {
+    gap: 6,
+  },
+  bannerTitle: {
+    ...typeRamp.bodyStrong,
+  },
+  bannerBody: {
+    ...typeRamp.body,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: tayyarSpacing.xl,
+  },
+  emptyIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  emptyTitle: {
+    ...typeRamp.heading,
+    textAlign: "center",
+  },
+  emptyBody: {
+    ...typeRamp.body,
+    textAlign: "center",
+  },
+  localeToggle: {
+    flexDirection: "row",
+    padding: 4,
+    borderRadius: tayyarRadii.pill,
+    borderWidth: 1,
+    borderColor: tayyarColors.border,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    gap: 4,
+  },
+  localeButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: tayyarRadii.pill,
+  },
+  localeButtonActive: {
+    backgroundColor: "rgba(31,182,255,0.18)",
+  },
+  localeText: {
+    fontSize: 12,
+    color: tayyarColors.textSecondary,
+  },
+  localeTextActive: {
+    color: tayyarColors.textPrimary,
+  },
+  button: {
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tayyarRadii.md,
     paddingHorizontal: tayyarSpacing.lg,
+    gap: 10,
   },
   primaryButton: {
-    backgroundColor: tayyarColors.gold,
+    backgroundColor: heroTokens.action.primaryBackground,
   },
   secondaryButton: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: heroTokens.action.secondaryBackground,
     borderWidth: 1,
     borderColor: tayyarColors.border,
   },
@@ -469,8 +592,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tayyarColors.borderStrong,
   },
+  ghostButton: {
+    backgroundColor: "transparent",
+  },
   buttonPressed: {
-    opacity: 0.88,
+    opacity: 0.9,
     transform: [{ scale: 0.995 }],
   },
   disabledButton: {
@@ -480,33 +606,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   primaryButtonText: {
-    color: midnightInk,
+    color: heroTokens.action.primaryText,
   },
   secondaryButtonText: {
-    color: tayyarColors.textPrimary,
+    color: heroTokens.action.secondaryText,
   },
-  localeToggle: {
-    flexDirection: "row",
-    borderRadius: 999,
+  ghostButtonText: {
+    color: tayyarColors.skyLight,
+  },
+  bottomDock: {
+    gap: tayyarSpacing.sm,
+  },
+  bottomDockSecondary: {
+    gap: tayyarSpacing.sm,
+  },
+  bottomDockPrimary: {
+    gap: tayyarSpacing.sm,
+  },
+  otpRow: {
+    gap: tayyarSpacing.sm,
+    justifyContent: "space-between",
+  },
+  otpBox: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: tayyarRadii.md,
     borderWidth: 1,
     borderColor: tayyarColors.border,
     backgroundColor: "rgba(255,255,255,0.04)",
-    padding: 4,
-    gap: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  localeToggleButton: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  otpBoxFilled: {
+    borderColor: tayyarColors.sky,
+    backgroundColor: "rgba(31,182,255,0.12)",
   },
-  localeToggleButtonActive: {
-    backgroundColor: "rgba(41,182,246,0.18)",
+  otpDigit: {
+    fontSize: 28,
+    color: tayyarColors.textPrimary,
   },
-  localeToggleText: {
-    fontSize: 12,
+  formField: {
+    gap: 8,
+  },
+  fieldLabel: {
+    ...typeRamp.label,
     color: tayyarColors.textSecondary,
   },
-  localeToggleTextActive: {
-    color: tayyarColors.textPrimary,
+  fieldHint: {
+    ...typeRamp.body,
+    color: tayyarColors.textTertiary,
   },
 });

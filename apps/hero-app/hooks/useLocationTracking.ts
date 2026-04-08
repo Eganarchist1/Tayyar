@@ -16,7 +16,7 @@ async function ensureLocationPermission() {
   return requested === RESULTS.GRANTED;
 }
 
-async function postHeroLocation(latitude: number, longitude: number) {
+async function postHeroLocation(latitude: number, longitude: number, token?: string | null) {
   try {
     await heroFetch("/v1/heroes/location", {
       method: "POST",
@@ -25,13 +25,13 @@ async function postHeroLocation(latitude: number, longitude: number) {
         lng: longitude,
         reason: "MOVING_WITHOUT_ORDER",
       }),
-    });
+    }, token);
   } catch (error) {
     console.error("Failed to post hero location", error);
   }
 }
 
-export async function initBackgroundLocation() {
+export async function initBackgroundLocation(token?: string | null) {
   const granted = await ensureLocationPermission();
   if (!granted) {
     throw new Error("Location permission not granted.");
@@ -43,7 +43,7 @@ export async function initBackgroundLocation() {
 
   watchId = Geolocation.watchPosition(
     (position) => {
-      void postHeroLocation(position.coords.latitude, position.coords.longitude);
+      void postHeroLocation(position.coords.latitude, position.coords.longitude, token);
     },
     (error) => {
       console.error("Location watch failed", error);

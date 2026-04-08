@@ -1,73 +1,115 @@
 import React from "react";
-import { useNavigation } from "@react-navigation/native";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { GlassPanel, HeroLoadingShell, LocaleTogglePill, TayyarButton, TayyarScreen } from "@/components/tayyar-ui";
+import {
+  Banner,
+  FormField,
+  GlassPanel,
+  HeroLoadingShell,
+  LocaleTogglePill,
+  OtpCodeInput,
+  TayyarButton,
+  TayyarScreen,
+} from "@/components/tayyar-ui";
 import { heroAppCopy } from "@/lib/copy";
-import { heroFetch } from "@/lib/api";
-import { useHeroLocale } from "@/lib/locale";
+import { heroFetch, isInvalidOtpError, isMissingHeroAccountError, isRetryableHeroError } from "@/lib/api";
+import { heroBuildConfig } from "@/lib/build-config";
 import { getFontFamily, tayyarColors, tayyarRadii, typeRamp } from "@/lib/design";
+import { useHeroLocale } from "@/lib/locale";
 import { useAuthStore } from "@/store/authStore";
 
+type OtpRequestResponse = {
+  sent: boolean;
+  devCode?: string;
+  expiresInSeconds?: number;
+};
+
+type OtpVerifyResponse = {
+  accessToken: string;
+  refreshToken: string;
+  user: { name: string; email: string; role: string; phone?: string | null };
+};
+
 export default function LoginScreen() {
-  const navigation = useNavigation<any>();
   const { token, setAuth, hasHydrated } = useAuthStore();
   const { locale, direction, t } = useHeroLocale();
-  const [phone, setPhone] = React.useState("1000000004");
+  const [phase, setPhase] = React.useState<"phone" | "otp">("phone");
+  const [phone, setPhone] = React.useState(heroBuildConfig.qaHeroPhone.replace(/^\+20/, ""));
   const [otp, setOtp] = React.useState("");
-  const [step, setStep] = React.useState<"phone" | "otp">("phone");
   const [loading, setLoading] = React.useState(false);
-  const [message, setMessage] = React.useState("");
-
-  React.useEffect(() => {
-    if (token) {
-      navigation.navigate("MainTabs");
-    }
-  }, [navigation, token]);
+  const [banner, setBanner] = React.useState<{ tone: "accent" | "warning" | "success"; title: string; body: string } | null>(null);
 
   if (!hasHydrated) {
     return <HeroLoadingShell message={t(heroAppCopy.common.restoringSession)} />;
   }
 
   if (token) {
-    return null;
+    return <HeroLoadingShell message={t(heroAppCopy.common.loading)} />;
   }
 
-  const canContinue = step === "phone" ? phone.replace(/\D/g, "").length >= 10 : otp.length === 4;
+  const phoneDigits = phone.replace(/\D/g, "");
+  const canContinue = phase === "phone" ? phoneDigits.length >= 10 : otp.length === 4;
   const align = direction === "rtl" ? "right" : "left";
   const rowDirection = direction === "rtl" ? "row-reverse" : "row";
 
-  async function handleContinue() {
+  async function requestCode() {
     setLoading(true);
-    setMessage("");
-
+    setBanner(null);
     try {
-      if (step === "phone") {
-        const payload = await heroFetch<{ sent: boolean; devCode?: string }>("/v1/auth/otp/request", {
-          method: "POST",
-          body: JSON.stringify({ phone: `+20${phone.replace(/\D/g, "")}` }),
+      const payload = await heroFetch<OtpRequestResponse>("/v1/auth/otp/request", {
+        method: "POST",
+        body: JSON.stringify({ phone: `+20${phoneDigits}` }),
+      });
+
+      setPhase("otp");
+      if (payload.devCode) {
+        setOtp(payload.devCode);
+      }
+      setBanner({
+        tone: "success",
+        title: t(heroAppCopy.auth.codeSent),
+        body:
+          payload.devCode
+            ? `${t(heroAppCopy.auth.qaCodeHint)}: ${payload.devCode}`
+            : heroBuildConfig.buildFlavor === "qa"
+              ? t(heroAppCopy.auth.qaCodeHint)
+              : t(heroAppCopy.auth.trustedDevice),
+      });
+    } catch (error) {
+      if (isMissingHeroAccountError(error)) {
+        setBanner({
+          tone: "warning",
+          title: t(heroAppCopy.auth.accountMissing),
+          body: heroBuildConfig.buildFlavor === "qa" ? t(heroAppCopy.auth.qaHint) : t(heroAppCopy.common.unexpectedError),
         });
-
-        if (payload.devCode) {
-          setMessage(locale === "ar" ? `رمز الاختبار: ${payload.devCode}` : `Test code: ${payload.devCode}`);
-        }
-
-        setStep("otp");
         return;
       }
 
-      const payload = await heroFetch<{
-        accessToken: string;
-        refreshToken: string;
-        user: { name: string; email: string; role: string; phone?: string | null };
-      }>("/v1/auth/otp/verify", {
-        method: "POST",
-        body: JSON.stringify({ phone: `+20${phone.replace(/\D/g, "")}`, code: otp }),
+      setBanner({
+        tone: "warning",
+        title: isRetryableHeroError(error) ? t(heroAppCopy.common.offline) : t(heroAppCopy.common.retry),
+        body: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
       });
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  async function verifyCode() {
+    setLoading(true);
+    setBanner(null);
+    try {
+      const payload = await heroFetch<OtpVerifyResponse>("/v1/auth/otp/verify", {
+        method: "POST",
+        body: JSON.stringify({ phone: `+20${phoneDigits}`, code: otp }),
+      });
       setAuth(payload.accessToken, payload.refreshToken, payload.user);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError));
+      setBanner({
+        tone: "warning",
+        title: isInvalidOtpError(error) ? t(heroAppCopy.auth.wrongCode) : t(heroAppCopy.common.retry),
+        body: error instanceof Error ? error.message : t(heroAppCopy.common.unexpectedError),
+      });
     } finally {
       setLoading(false);
     }
@@ -75,54 +117,46 @@ export default function LoginScreen() {
 
   return (
     <TayyarScreen scroll={false} contentContainerStyle={styles.screen}>
-      <View style={[styles.headerWrap, { alignItems: "center" }]}>
-        <View style={styles.localeWrap}>
-          <LocaleTogglePill />
+      <View style={styles.header}>
+        <LocaleTogglePill />
+        <View style={styles.logoWrap}>
+          <View style={styles.logoBadge}>
+            <Ionicons name="paper-plane" size={34} color="#071019" />
+          </View>
+          <Text style={[styles.brand, { fontFamily: getFontFamily(locale, "display") }]}>
+            {t(heroAppCopy.common.heroBrand)}
+          </Text>
         </View>
-
-        <View style={styles.logoOrb}>
-          <Ionicons name="paper-plane" size={34} color="#071019" />
-        </View>
-
-        <Text style={[styles.brand, { fontFamily: getFontFamily(locale, "display") }]}>
-          {t(heroAppCopy.common.heroBrand)}
-        </Text>
         <Text style={[styles.title, { fontFamily: getFontFamily(locale, "heading"), textAlign: "center" }]}>
-          {t(heroAppCopy.login.title)}
+          {t(heroAppCopy.auth.title)}
         </Text>
         <Text style={[styles.subtitle, { fontFamily: getFontFamily(locale, "body"), textAlign: "center" }]}>
-          {t(heroAppCopy.login.subtitle)}
+          {t(heroAppCopy.auth.subtitle)}
         </Text>
       </View>
 
-      <GlassPanel style={styles.panel}>
-        <View style={styles.panelHeader}>
-          <Text style={[styles.panelEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-            {t(heroAppCopy.login.gateway)}
-          </Text>
-          <Text style={[styles.panelTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
-            {step === "phone" ? t(heroAppCopy.login.startWithPhone) : t(heroAppCopy.login.enterOtp)}
-          </Text>
-          <Text style={[styles.panelCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
-            {step === "phone" ? t(heroAppCopy.login.phoneBody) : t(heroAppCopy.login.otpBody)}
-          </Text>
-        </View>
+      <GlassPanel style={styles.panel} tone="accent">
+        <Text style={[styles.panelTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
+          {phase === "phone" ? t(heroAppCopy.auth.phoneTitle) : t(heroAppCopy.auth.otpTitle)}
+        </Text>
+        <Text style={[styles.panelBody, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
+          {phase === "phone" ? t(heroAppCopy.auth.phoneBody) : t(heroAppCopy.auth.otpBody)}
+        </Text>
 
-        {step === "phone" ? (
-          <View style={styles.formBlock}>
-            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-              {t(heroAppCopy.login.phoneLabel)}
-            </Text>
-            <View style={[styles.inputShell, { flexDirection: rowDirection }]}>
+        {banner ? <Banner title={banner.title} body={banner.body} tone={banner.tone} /> : null}
+
+        {phase === "phone" ? (
+          <FormField label={t(heroAppCopy.auth.phoneLabel)} hint={heroBuildConfig.buildFlavor === "qa" ? t(heroAppCopy.auth.qaHint) : undefined}>
+            <View style={[styles.phoneInputShell, { flexDirection: rowDirection }]}>
               <Text style={styles.countryCode}>+20</Text>
               <TextInput
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(value) => setPhone(value.replace(/[^\d]/g, "").slice(0, 11))}
                 keyboardType="phone-pad"
-                placeholder="10X XXXX XXX"
+                placeholder="10XXXXXXXX"
                 placeholderTextColor={tayyarColors.textTertiary}
                 style={[
-                  styles.input,
+                  styles.phoneInput,
                   {
                     textAlign: direction === "rtl" ? "right" : "left",
                     fontFamily: getFontFamily("en", "mono"),
@@ -130,48 +164,68 @@ export default function LoginScreen() {
                 ]}
               />
             </View>
-          </View>
+          </FormField>
         ) : (
-          <View style={styles.formBlock}>
-            <Text style={[styles.inputLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
-              {t(heroAppCopy.login.otpLabel)}
-            </Text>
-            <View style={[styles.otpRow, { flexDirection: rowDirection }]}>
-              {[0, 1, 2, 3].map((index) => (
-                <View key={index} style={[styles.otpBox, otp[index] ? styles.otpBoxFilled : null]}>
-                  <Text style={styles.otpDigit}>{otp[index] || ""}</Text>
-                </View>
-              ))}
-            </View>
-            <TextInput
-              value={otp}
-              onChangeText={(value) => setOtp(value.replace(/\D/g, "").slice(0, 4))}
-              keyboardType="number-pad"
-              maxLength={4}
-              style={styles.otpHiddenInput}
-              autoFocus
+          <View style={styles.formStack}>
+            <FormField
+              label={t(heroAppCopy.auth.otpLabel)}
+              hint={heroBuildConfig.buildFlavor === "qa" ? t(heroAppCopy.auth.qaCodeHint) : t(heroAppCopy.auth.trustedDevice)}
+            >
+              <OtpCodeInput value={otp} onChangeText={setOtp} />
+              <TextInput
+                value={otp}
+                onChangeText={(value) => setOtp(value.replace(/[^\d]/g, "").slice(0, 4))}
+                keyboardType="number-pad"
+                maxLength={4}
+                autoFocus
+                placeholder="1234"
+                placeholderTextColor={tayyarColors.textTertiary}
+                style={[
+                  styles.otpInput,
+                  {
+                    textAlign: "center",
+                    fontFamily: getFontFamily("en", "mono"),
+                  },
+                ]}
+              />
+            </FormField>
+
+            <TayyarButton
+              label={t(heroAppCopy.auth.editPhone)}
+              variant="ghost"
+              onPress={() => {
+                setPhase("phone");
+                setOtp("");
+                setBanner(null);
+              }}
             />
-            <Pressable onPress={() => setStep("phone")}>
-              <Text style={[styles.backLink, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
-                {t(heroAppCopy.login.editPhone)}
-              </Text>
-            </Pressable>
           </View>
         )}
 
-        {message ? (
-          <Text style={[styles.message, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
-            {message}
-          </Text>
-        ) : null}
-
         <TayyarButton
-          label={step === "phone" ? t(heroAppCopy.login.sendCode) : t(heroAppCopy.login.openBoard)}
-          onPress={handleContinue}
-          disabled={!canContinue}
+          label={
+            loading
+              ? phase === "phone"
+                ? t(heroAppCopy.auth.sendingCode)
+                : t(heroAppCopy.auth.verifyingCode)
+              : phase === "phone"
+                ? t(heroAppCopy.auth.sendCode)
+                : t(heroAppCopy.auth.verifyCode)
+          }
           loading={loading}
-          icon={<Ionicons name={direction === "rtl" ? "arrow-back" : "arrow-forward"} size={18} color="#071019" />}
+          disabled={!canContinue}
+          onPress={phase === "phone" ? requestCode : verifyCode}
+          icon={<Ionicons name={phase === "phone" ? "chatbubble-ellipses-outline" : "shield-checkmark-outline"} size={18} color="#071019" />}
         />
+
+        {phase === "otp" ? (
+          <TayyarButton
+            label={t(heroAppCopy.auth.resendCode)}
+            variant="outline"
+            onPress={requestCode}
+            disabled={loading}
+          />
+        ) : null}
       </GlassPanel>
     </TayyarScreen>
   );
@@ -183,23 +237,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 24,
   },
-  headerWrap: {
-    gap: 8,
-    marginBottom: 6,
+  header: {
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 4,
   },
-  localeWrap: {
-    marginBottom: 6,
+  logoWrap: {
+    alignItems: "center",
+    gap: 10,
   },
-  logoOrb: {
-    width: 86,
-    height: 86,
-    borderRadius: 28,
+  logoBadge: {
+    width: 84,
+    height: 84,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
     backgroundColor: tayyarColors.gold,
     borderWidth: 1,
-    borderColor: "rgba(245, 182, 64, 0.45)",
+    borderColor: "rgba(246,183,60,0.42)",
   },
   brand: {
     fontSize: 34,
@@ -207,89 +262,52 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typeRamp.heading,
-    fontSize: 26,
+    fontSize: 28,
   },
   subtitle: {
     ...typeRamp.body,
     maxWidth: 320,
   },
   panel: {
-    gap: 22,
-  },
-  panelHeader: {
-    gap: 6,
-  },
-  panelEyebrow: {
-    ...typeRamp.label,
-    color: tayyarColors.goldLight,
+    gap: 18,
   },
   panelTitle: {
     ...typeRamp.heading,
   },
-  panelCopy: {
+  panelBody: {
     ...typeRamp.body,
   },
-  formBlock: {
+  formStack: {
     gap: 14,
   },
-  inputLabel: {
-    ...typeRamp.label,
-  },
-  inputShell: {
+  phoneInputShell: {
     minHeight: 64,
     borderRadius: tayyarRadii.lg,
-    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
     borderColor: tayyarColors.border,
-    paddingHorizontal: 18,
+    backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
+    paddingHorizontal: 18,
     gap: 14,
   },
   countryCode: {
-    fontFamily: getFontFamily("en", "mono"),
+    fontFamily: "monospace",
     fontSize: 16,
     color: tayyarColors.goldLight,
   },
-  input: {
+  phoneInput: {
     flex: 1,
     fontSize: 18,
     color: tayyarColors.textPrimary,
   },
-  otpRow: {
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  otpBox: {
-    flex: 1,
-    minHeight: 72,
-    borderRadius: 18,
+  otpInput: {
+    minHeight: 58,
+    borderRadius: tayyarRadii.lg,
     borderWidth: 1,
     borderColor: tayyarColors.border,
     backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  otpBoxFilled: {
-    borderColor: tayyarColors.sky,
-    backgroundColor: "rgba(41,182,246,0.12)",
-  },
-  otpDigit: {
-    fontFamily: getFontFamily("en", "mono"),
-    fontSize: 28,
     color: tayyarColors.textPrimary,
-  },
-  otpHiddenInput: {
-    position: "absolute",
-    opacity: 0,
-    pointerEvents: "none",
-  },
-  backLink: {
-    ...typeRamp.label,
-    color: tayyarColors.skyLight,
-    textAlign: "center",
-  },
-  message: {
-    ...typeRamp.body,
-    color: tayyarColors.goldLight,
+    fontSize: 24,
+    letterSpacing: 8,
   },
 });

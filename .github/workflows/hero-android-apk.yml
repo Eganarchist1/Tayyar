@@ -64,10 +64,17 @@ jobs:
           cat <<EOF > apps/hero-app/lib/build-config.ts
           export const heroBuildConfig = {
             apiUrl: "${API_URL}",
-            appVersion: "1.1.0",
+            appVersion: "1.3.0",
             appName: "Tayyar Hero",
+            buildFlavor: "qa",
+            qaHeroPhone: "+201000000004",
+            qaOtpCode: "1234",
+            trustedDevice: true,
           } as const;
           EOF
+
+      - name: Typecheck hero app
+        run: npm run typecheck --workspace @tayyar/hero-app
 
       - name: Make Gradle wrapper executable
         working-directory: apps/hero-app/android

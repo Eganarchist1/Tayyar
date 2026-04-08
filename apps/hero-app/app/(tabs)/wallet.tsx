@@ -2,6 +2,7 @@ import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import {
+  EmptyState,
   GlassPanel,
   LocaleTogglePill,
   MetricTile,
@@ -10,7 +11,7 @@ import {
   TayyarScreen,
   TopBrandBar,
 } from "@/components/tayyar-ui";
-import { formatCurrency, getFontFamily, tayyarColors, tayyarFonts, typeRamp } from "@/lib/design";
+import { formatCurrency, getFontFamily, tayyarColors, typeRamp } from "@/lib/design";
 import { heroAppCopy } from "@/lib/copy";
 import { useHeroLocale } from "@/lib/locale";
 import { heroFetch } from "@/lib/api";
@@ -37,30 +38,6 @@ export default function WalletScreen() {
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [cashoutLoading, setCashoutLoading] = React.useState(false);
-  const [filter, setFilter] = React.useState<"ALL" | "IN" | "OUT" | "PAYOUT">("ALL");
-
-  const incomeTotal = React.useMemo(
-    () =>
-      wallet.transactions
-        .filter((transaction) => transaction.amount > 0)
-        .reduce((sum, transaction) => sum + transaction.amount, 0),
-    [wallet.transactions],
-  );
-
-  const expenseTotal = React.useMemo(
-    () =>
-      wallet.transactions
-        .filter((transaction) => transaction.amount < 0)
-        .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0),
-    [wallet.transactions],
-  );
-
-  const filteredTransactions = React.useMemo(() => {
-    if (filter === "ALL") return wallet.transactions;
-    if (filter === "IN") return wallet.transactions.filter((transaction) => transaction.amount > 0);
-    if (filter === "OUT") return wallet.transactions.filter((transaction) => transaction.amount < 0);
-    return wallet.transactions.filter((transaction) => transaction.type.toUpperCase().includes("WITHDRAW"));
-  }, [filter, wallet.transactions]);
 
   const loadWallet = React.useCallback(async () => {
     const payload = await heroFetch<WalletPayload>("/v1/billing/wallet", undefined, token);
@@ -92,7 +69,16 @@ export default function WalletScreen() {
     }
   }, [loadWallet, t]);
 
-  const handleCashout = React.useCallback(async () => {
+  const incomeTotal = React.useMemo(
+    () => wallet.transactions.filter((item) => item.amount > 0).reduce((sum, item) => sum + item.amount, 0),
+    [wallet.transactions],
+  );
+  const expenseTotal = React.useMemo(
+    () => wallet.transactions.filter((item) => item.amount < 0).reduce((sum, item) => sum + Math.abs(item.amount), 0),
+    [wallet.transactions],
+  );
+
+  async function handleCashout() {
     if (!wallet.balance) {
       Alert.alert(t(heroAppCopy.wallet.noBalanceTitle), t(heroAppCopy.wallet.noBalanceBody));
       return;
@@ -118,7 +104,7 @@ export default function WalletScreen() {
     } finally {
       setCashoutLoading(false);
     }
-  }, [loadWallet, t, token, wallet.balance]);
+  }
 
   const rowDirection = direction === "rtl" ? "row-reverse" : "row";
   const align = direction === "rtl" ? "right" : "left";
@@ -133,12 +119,14 @@ export default function WalletScreen() {
         rightSlot={<LocaleTogglePill />}
       />
 
-      <GlassPanel style={styles.balanceCard} tone="gold">
-        <Text style={[styles.balanceEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
+      <GlassPanel tone="warning" style={styles.balanceCard}>
+        <Text style={[styles.balanceLabel, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
           {t(heroAppCopy.wallet.availableBalance)}
         </Text>
-        <Text style={styles.balanceValue}>{loading ? "..." : formatCurrency(wallet.balance, locale)}</Text>
-        <Text style={[styles.balanceCopy, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
+        <Text style={[styles.balanceValue, { textAlign: align }]}>
+          {loading ? "..." : formatCurrency(wallet.balance, locale)}
+        </Text>
+        <Text style={[styles.balanceHint, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
           {t(heroAppCopy.wallet.withdrawNote)}
         </Text>
         <TayyarButton
@@ -149,9 +137,9 @@ export default function WalletScreen() {
         />
       </GlassPanel>
 
-      <View style={[styles.metricsRow, { flexDirection: rowDirection }]}>
+      <View style={[styles.metricRow, { flexDirection: rowDirection }]}>
         <MetricTile label={t(heroAppCopy.wallet.totalIncome)} value={formatCurrency(incomeTotal, locale)} tone="success" />
-        <MetricTile label={t(heroAppCopy.wallet.totalDeductions)} value={formatCurrency(expenseTotal, locale)} tone="sky" />
+        <MetricTile label={t(heroAppCopy.wallet.totalDeductions)} value={formatCurrency(expenseTotal, locale)} tone="accent" />
       </View>
 
       <SectionHeading
@@ -160,50 +148,25 @@ export default function WalletScreen() {
         subtitle={t(heroAppCopy.wallet.latestMovesSubtitle)}
       />
 
-      <View style={[styles.filterRow, { flexDirection: rowDirection }]}>
-        {([
-          { key: "ALL", label: t(heroAppCopy.wallet.filterAll) },
-          { key: "IN", label: t(heroAppCopy.wallet.filterIn) },
-          { key: "OUT", label: t(heroAppCopy.wallet.filterOut) },
-          { key: "PAYOUT", label: t(heroAppCopy.wallet.filterPayout) },
-        ] as const).map((item) => {
-          const active = filter === item.key;
-          return (
-            <TayyarButton
-              key={item.key}
-              label={item.label}
-              variant={active ? "primary" : "outline"}
-              onPress={() => setFilter(item.key)}
-              style={styles.filterButton}
-            />
-          );
-        })}
-      </View>
-
-      <View style={styles.transactionList}>
-        {filteredTransactions.length ? (
-          filteredTransactions.map((transaction) => {
-            const isPositive = transaction.amount >= 0;
+      <View style={styles.list}>
+        {wallet.transactions.length ? (
+          wallet.transactions.slice(0, 12).map((transaction) => {
+            const positive = transaction.amount >= 0;
             return (
               <GlassPanel key={transaction.id} style={styles.transactionCard}>
-                <View style={styles.transactionIcon}>
-                  <Ionicons
-                    name={isPositive ? "arrow-down-circle" : "arrow-up-circle"}
-                    size={20}
-                    color={isPositive ? tayyarColors.success : tayyarColors.warning}
-                  />
-                </View>
-                <View style={styles.transactionContent}>
-                  <View style={[styles.transactionTopRow, { flexDirection: rowDirection }]}>
-                    <Text style={[styles.transactionTitle, { textAlign: align }]}>
+                <View style={[styles.transactionRow, { flexDirection: rowDirection }]}>
+                  <View style={[styles.transactionBadge, positive ? styles.incomingBadge : styles.outgoingBadge]}>
+                    <Ionicons
+                      name={positive ? "arrow-down-outline" : "arrow-up-outline"}
+                      size={18}
+                      color={positive ? tayyarColors.success : tayyarColors.warning}
+                    />
+                  </View>
+                  <View style={styles.transactionCopy}>
+                    <Text style={[styles.transactionTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>
                       {transaction.description || humanizeType(transaction.type)}
                     </Text>
-                    <Text style={[styles.transactionAmount, isPositive ? styles.positiveAmount : styles.negativeAmount]}>
-                      {`${isPositive ? "+" : "-"} ${formatCurrency(Math.abs(transaction.amount), locale)}`}
-                    </Text>
-                  </View>
-                  <View style={[styles.transactionBottomRow, { flexDirection: rowDirection }]}>
-                    <Text style={styles.transactionDate}>
+                    <Text style={[styles.transactionMeta, { fontFamily: getFontFamily(locale, "body"), textAlign: align }]}>
                       {new Date(transaction.createdAt).toLocaleString(locale === "ar" ? "ar-EG-u-nu-latn" : "en-GB", {
                         day: "2-digit",
                         month: "short",
@@ -211,36 +174,20 @@ export default function WalletScreen() {
                         minute: "2-digit",
                       })}
                     </Text>
-                    <Text style={styles.transactionStatus}>
-                      {transaction.status === "SUCCESS"
-                        ? t(heroAppCopy.wallet.completed)
-                        : transaction.status || t(heroAppCopy.wallet.recorded)}
-                    </Text>
                   </View>
+                  <Text style={[styles.transactionAmount, positive ? styles.amountIn : styles.amountOut]}>
+                    {`${positive ? "+" : "-"} ${formatCurrency(Math.abs(transaction.amount), locale)}`}
+                  </Text>
                 </View>
               </GlassPanel>
             );
           })
-        ) : wallet.transactions.length ? (
-          <GlassPanel style={styles.emptyCard}>
-            <Ionicons name="filter-outline" size={26} color={tayyarColors.goldLight} />
-            <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading") }]}>
-              {t(heroAppCopy.wallet.filteredEmptyTitle)}
-            </Text>
-            <Text style={[styles.emptyCopy, { fontFamily: getFontFamily(locale, "body") }]}>
-              {t(heroAppCopy.wallet.filteredEmptyBody)}
-            </Text>
-          </GlassPanel>
         ) : (
-          <GlassPanel style={styles.emptyCard}>
-            <Ionicons name="receipt-outline" size={26} color={tayyarColors.goldLight} />
-            <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading") }]}>
-              {t(heroAppCopy.wallet.emptyTitle)}
-            </Text>
-            <Text style={[styles.emptyCopy, { fontFamily: getFontFamily(locale, "body") }]}>
-              {t(heroAppCopy.wallet.emptyBody)}
-            </Text>
-          </GlassPanel>
+          <EmptyState
+            icon="receipt-outline"
+            title={t(heroAppCopy.wallet.emptyTitle)}
+            body={t(heroAppCopy.wallet.emptyBody)}
+          />
         )}
       </View>
     </TayyarScreen>
@@ -258,93 +205,66 @@ const styles = StyleSheet.create({
   balanceCard: {
     gap: 12,
   },
-  balanceEyebrow: {
+  balanceLabel: {
     ...typeRamp.label,
     color: tayyarColors.goldLight,
   },
   balanceValue: {
-    fontFamily: tayyarFonts.mono,
-    fontSize: 34,
+    fontFamily: "monospace",
+    fontSize: 32,
     color: tayyarColors.textPrimary,
   },
-  balanceCopy: {
+  balanceHint: {
     ...typeRamp.body,
+    color: tayyarColors.textSecondary,
   },
-  metricsRow: {
+  metricRow: {
     gap: 12,
   },
-  filterRow: {
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  filterButton: {
-    minHeight: 44,
-  },
-  transactionList: {
+  list: {
     gap: 12,
     paddingBottom: 20,
   },
   transactionCard: {
-    flexDirection: "row-reverse",
-    gap: 14,
-    alignItems: "center",
-  },
-  transactionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: tayyarColors.border,
-  },
-  transactionContent: {
-    flex: 1,
     gap: 8,
   },
-  transactionTopRow: {
-    justifyContent: "space-between",
+  transactionRow: {
     alignItems: "center",
     gap: 12,
   },
-  transactionBottomRow: {
-    justifyContent: "space-between",
+  transactionBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: "center",
-    gap: 12,
+    justifyContent: "center",
+  },
+  incomingBadge: {
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+  },
+  outgoingBadge: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  transactionCopy: {
+    flex: 1,
+    gap: 4,
   },
   transactionTitle: {
-    ...typeRamp.bodyStrong,
-    flex: 1,
-  },
-  transactionAmount: {
-    fontFamily: tayyarFonts.mono,
-    fontSize: 14,
-  },
-  positiveAmount: {
-    color: tayyarColors.success,
-  },
-  negativeAmount: {
-    color: tayyarColors.warning,
-  },
-  transactionDate: {
-    ...typeRamp.label,
-  },
-  transactionStatus: {
-    ...typeRamp.label,
-    color: tayyarColors.textSecondary,
-  },
-  emptyCard: {
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 28,
-  },
-  emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     color: tayyarColors.textPrimary,
   },
-  emptyCopy: {
+  transactionMeta: {
     ...typeRamp.body,
-    textAlign: "center",
+    color: tayyarColors.textSecondary,
+  },
+  transactionAmount: {
+    fontFamily: "monospace",
+    fontSize: 13,
+  },
+  amountIn: {
+    color: tayyarColors.success,
+  },
+  amountOut: {
+    color: tayyarColors.warning,
   },
 });

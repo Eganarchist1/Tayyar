@@ -5,7 +5,8 @@ export type HeroRootStackParamList = {
 };
 
 export type HeroMainTabParamList = {
-  Dashboard: undefined;
+  Home: undefined;
+  Missions: undefined;
   Wallet: undefined;
-  Hr: undefined;
+  Profile: undefined;
 };

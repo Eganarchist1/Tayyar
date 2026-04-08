@@ -228,9 +228,9 @@ export const AuthService = {
       expiresInSeconds: OTP_TTL_MINUTES * 60,
       phone: normalizedPhone,
       devCode:
-        env.OTP_DELIVERY_MODE === "DEV" && process.env.NODE_ENV !== "production"
-          ? code
-          : undefined,
+        env.OTP_DELIVERY_MODE === "WHATSAPP"
+          ? undefined
+          : code,
     };
   },
 
