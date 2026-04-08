@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
 import { useNavigation } from "@react-navigation/native";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   EmptyState,
   GlassPanel,
@@ -98,7 +98,7 @@ export default function MissionsScreen() {
               <TayyarButton
                 label={t(heroAppCopy.missions.open)}
                 onPress={() => navigation.navigate("OrderDetails", { id: mission.id })}
-                icon={<Ionicons name="arrow-forward-circle-outline" size={18} color="#071019" />}
+                icon={<HeroSymbol name="route" size={18} color="#071019" />}
               />
             </GlassPanel>
           ))}

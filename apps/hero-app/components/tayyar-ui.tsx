@@ -12,7 +12,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "react-native-vector-icons/Ionicons";
 import {
   getFontFamily,
   getHeroStatusMeta,
@@ -24,6 +23,7 @@ import {
   typeRamp,
 } from "@/lib/design";
 import { heroAppCopy } from "@/lib/copy";
+import { HeroSymbol } from "@/components/hero-symbol";
 import { useHeroLocale } from "@/lib/locale";
 
 function textAlign(direction: "rtl" | "ltr") {
@@ -73,7 +73,7 @@ export function HeroLoadingShell({ message }: { message?: string }) {
   return (
     <TayyarScreen scroll={false} contentContainerStyle={styles.loadingWrap}>
       <View style={styles.loadingMark}>
-        <Ionicons name="paper-plane" size={28} color={midnightInk} />
+        <HeroSymbol name="brand" size={30} color={midnightInk} />
       </View>
       <ActivityIndicator color={tayyarColors.skyLight} />
       <Text style={[styles.loadingText, { fontFamily: getFontFamily(locale, "bodyMedium") }]}>
@@ -235,10 +235,20 @@ export function EmptyState({
   body: string;
 }) {
   const { locale } = useHeroLocale();
+  const symbolName =
+    icon === "map-outline"
+      ? "missions"
+      : icon === "calendar-outline"
+        ? "calendar"
+        : icon === "document-text-outline"
+          ? "document"
+          : icon === "receipt-outline"
+            ? "wallet"
+            : "package";
   return (
     <GlassPanel style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Ionicons name={icon} size={24} color={tayyarColors.goldLight} />
+        <HeroSymbol name={symbolName} size={24} color={tayyarColors.goldLight} />
       </View>
       <Text style={[styles.emptyTitle, { fontFamily: getFontFamily(locale, "heading") }]}>{title}</Text>
       <Text style={[styles.emptyBody, { fontFamily: getFontFamily(locale, "body") }]}>{body}</Text>

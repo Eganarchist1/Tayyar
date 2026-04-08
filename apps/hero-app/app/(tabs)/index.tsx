@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   Banner,
   BottomActionDock,
@@ -14,13 +14,13 @@ import {
   TayyarScreen,
   TopBrandBar,
 } from "@/components/tayyar-ui";
-import { heroAppCopy } from "@/lib/copy";
-import { formatAppTime, formatCurrency, getFontFamily, getHeroStatusMeta, tayyarColors } from "@/lib/design";
-import { heroFetch, isRetryableHeroError } from "@/lib/api";
 import { enqueueHeroAction, flushQueuedHeroActions, getQueuedHeroActionCount } from "@/lib/action-queue";
+import { heroFetch, isRetryableHeroError } from "@/lib/api";
+import { heroAppCopy } from "@/lib/copy";
+import { formatAppTime, formatCurrency, tayyarColors } from "@/lib/design";
 import { heroFeedback } from "@/lib/feedback";
-import { useHeroLocale } from "@/lib/locale";
 import { initBackgroundLocation, stopLocationTracking } from "@/hooks/useLocationTracking";
+import { useHeroLocale } from "@/lib/locale";
 import { useAuthStore } from "@/store/authStore";
 
 type HeroProfile = {
@@ -98,6 +98,7 @@ export default function HeroHomeScreen() {
       .finally(() => {
         if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
@@ -123,12 +124,14 @@ export default function HeroHomeScreen() {
     const nextStatus = hero.status === "OFFLINE" ? "ONLINE" : "OFFLINE";
     setStatusLoading(true);
     setFeedback(null);
+
     try {
       if (nextStatus === "ONLINE") {
         await initBackgroundLocation(token);
       } else {
         await stopLocationTracking();
       }
+
       await heroFetch(
         "/v1/heroes/me/status",
         {
@@ -137,9 +140,14 @@ export default function HeroHomeScreen() {
         },
         token,
       );
+
       await loadData();
       heroFeedback.success();
-      setFeedback({ tone: "success", title: t(heroAppCopy.home.ready), body: t(heroAppCopy.common.syncedNow) });
+      setFeedback({
+        tone: "success",
+        title: t(heroAppCopy.home.ready),
+        body: t(heroAppCopy.common.syncedNow),
+      });
     } catch (error) {
       if (isRetryableHeroError(error)) {
         await enqueueHeroAction({
@@ -156,6 +164,7 @@ export default function HeroHomeScreen() {
           body: t(heroAppCopy.common.queuedForSync),
         });
       } else {
+        heroFeedback.warning();
         setFeedback({
           tone: "warning",
           title: t(heroAppCopy.common.retry),
@@ -169,12 +178,16 @@ export default function HeroHomeScreen() {
 
   const pilotName = user?.name || hero?.user?.name || (locale === "ar" ? "الطيار" : "Pilot");
   const currentMission = orders[0] || null;
-  const activeStatus = getHeroStatusMeta(hero?.status, locale);
+  const activeStatus = hero?.status === "OFFLINE" ? "OFFLINE" : "ONLINE";
   const rowDirection = direction === "rtl" ? "row-reverse" : "row";
   const align = direction === "rtl" ? "right" : "left";
 
   if (loading) {
-    return <TayyarScreen scroll={false}><View /></TayyarScreen>;
+    return (
+      <TayyarScreen scroll={false}>
+        <View />
+      </TayyarScreen>
+    );
   }
 
   return (
@@ -184,13 +197,19 @@ export default function HeroHomeScreen() {
       <TopBrandBar
         title={locale === "ar" ? `أهلاً ${pilotName.split(" ")[0]}` : `Hello ${pilotName.split(" ")[0]}`}
         subtitle={t(heroAppCopy.home.subtitle)}
-        rightSlot={<StatusPill label={activeStatus.label} />}
+        rightSlot={<StatusPill label={hero?.status === "OFFLINE" ? (locale === "ar" ? "غير متصل" : "Offline") : (locale === "ar" ? "جاهز" : "Online")} tone={activeStatus} />}
       />
 
       {feedback ? <Banner title={feedback.title} body={feedback.body} tone={feedback.tone} /> : null}
-      {pendingSyncCount > 0 ? <Banner title={t(heroAppCopy.common.pendingSync)} body={t(heroAppCopy.common.queuedForSync)} tone="warning" /> : null}
+      {pendingSyncCount > 0 ? (
+        <Banner title={t(heroAppCopy.common.pendingSync)} body={t(heroAppCopy.common.queuedForSync)} tone="warning" />
+      ) : null}
       {hero?.activeVacationRequest ? (
-        <Banner title={t(heroAppCopy.profile.activeRequest)} body={locale === "ar" ? "لديك إجازة معتمدة حالياً." : "You currently have an approved vacation."} tone="accent" />
+        <Banner
+          title={t(heroAppCopy.profile.activeRequest)}
+          body={locale === "ar" ? "لديك إجازة معتمدة حالياً." : "You currently have an approved vacation."}
+          tone="accent"
+        />
       ) : null}
 
       <GlassPanel tone="accent">
@@ -205,7 +224,7 @@ export default function HeroHomeScreen() {
               label={hero?.status === "OFFLINE" ? t(heroAppCopy.home.goOnline) : t(heroAppCopy.home.goOffline)}
               onPress={handleToggleStatus}
               loading={statusLoading}
-              icon={<Ionicons name={hero?.status === "OFFLINE" ? "flash-outline" : "pause-outline"} size={18} color="#071019" />}
+              icon={<HeroSymbol name={hero?.status === "OFFLINE" ? "power" : "pause"} size={18} color="#071019" />}
             />
           }
         />
@@ -239,7 +258,7 @@ export default function HeroHomeScreen() {
               <TayyarButton
                 label={t(heroAppCopy.home.openMission)}
                 onPress={() => navigation.navigate("OrderDetails", { id: currentMission.id })}
-                icon={<Ionicons name="arrow-forward-circle-outline" size={18} color="#071019" />}
+                icon={<HeroSymbol name="route" size={18} color="#071019" />}
               />
             }
           />

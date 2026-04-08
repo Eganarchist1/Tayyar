@@ -1,4 +1,5 @@
 import Geolocation from "@react-native-community/geolocation";
+import { Linking } from "react-native";
 import { PERMISSIONS, RESULTS, check, request } from "react-native-permissions";
 import { heroFetch } from "@/lib/api";
 
@@ -14,6 +15,51 @@ async function ensureLocationPermission() {
 
   const requested = await request(permission);
   return requested === RESULTS.GRANTED;
+}
+
+async function getCurrentFix() {
+  return new Promise<{ coords: { latitude: number; longitude: number } }>((resolve, reject) => {
+    Geolocation.getCurrentPosition(
+      resolve,
+      reject,
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 10000,
+      },
+    );
+  });
+}
+
+export async function openLocationServicesSettings() {
+  try {
+    if (typeof Linking.sendIntent === "function") {
+      await Linking.sendIntent("android.settings.LOCATION_SOURCE_SETTINGS");
+      return;
+    }
+  } catch {
+    // Fall through to app settings.
+  }
+
+  await Linking.openSettings();
+}
+
+export async function ensureLocationReady() {
+  const granted = await ensureLocationPermission();
+  if (!granted) {
+    throw new Error("يرجى تفعيل إذن الموقع أولاً.");
+  }
+
+  try {
+    return await getCurrentFix();
+  } catch (error: any) {
+    if (error?.code === 2 || error?.message?.toLowerCase?.().includes("location")) {
+      await openLocationServicesSettings();
+      throw new Error("فعّل خدمات الموقع ثم حاول مرة أخرى.");
+    }
+
+    throw error;
+  }
 }
 
 async function postHeroLocation(latitude: number, longitude: number, token?: string | null) {
@@ -32,14 +78,14 @@ async function postHeroLocation(latitude: number, longitude: number, token?: str
 }
 
 export async function initBackgroundLocation(token?: string | null) {
-  const granted = await ensureLocationPermission();
-  if (!granted) {
-    throw new Error("Location permission not granted.");
-  }
+  const position = await ensureLocationReady();
 
   if (watchId !== null) {
+    await postHeroLocation(position.coords.latitude, position.coords.longitude, token);
     return watchId;
   }
+
+  await postHeroLocation(position.coords.latitude, position.coords.longitude, token);
 
   watchId = Geolocation.watchPosition(
     (position) => {

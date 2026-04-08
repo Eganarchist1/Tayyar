@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, Linking, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   Banner,
   BottomActionDock,
@@ -224,7 +224,7 @@ export default function OrderDetailsScreen() {
           label={t(heroAppCopy.common.back)}
           variant="outline"
           onPress={() => navigation.goBack()}
-          icon={<Ionicons name={direction === "rtl" ? "arrow-forward" : "arrow-back"} size={16} color={tayyarColors.textPrimary} />}
+          icon={<HeroSymbol name="route" size={16} color={tayyarColors.textPrimary} />}
         />
         <View style={styles.headerCopy}>
           <Text style={[styles.headerEyebrow, { fontFamily: getFontFamily(locale, "bodyMedium"), textAlign: align }]}>
@@ -275,7 +275,7 @@ export default function OrderDetailsScreen() {
             variant="secondary"
             loading={syncingQueue}
             onPress={syncQueuedActions}
-            icon={<Ionicons name="sync-outline" size={18} color={tayyarColors.textPrimary} />}
+            icon={<HeroSymbol name="send" size={18} color={tayyarColors.textPrimary} />}
           />
         </GlassPanel>
       ) : null}
@@ -333,14 +333,14 @@ export default function OrderDetailsScreen() {
           variant="secondary"
           onPress={() => callPhone(order.branch?.phone)}
           style={styles.flexButton}
-          icon={<Ionicons name="call-outline" size={18} color={tayyarColors.textPrimary} />}
+          icon={<HeroSymbol name="profile" size={18} color={tayyarColors.textPrimary} />}
         />
         <TayyarButton
           label={t(heroAppCopy.order.callCustomer)}
           variant="secondary"
           onPress={() => callPhone(order.customerPhone)}
           style={styles.flexButton}
-          icon={<Ionicons name="call-outline" size={18} color={tayyarColors.textPrimary} />}
+          icon={<HeroSymbol name="profile" size={18} color={tayyarColors.textPrimary} />}
         />
       </View>
 
@@ -348,7 +348,7 @@ export default function OrderDetailsScreen() {
         label={t(heroAppCopy.order.openMaps)}
         variant="outline"
         onPress={openMaps}
-        icon={<Ionicons name="navigate-outline" size={18} color={tayyarColors.textPrimary} />}
+        icon={<HeroSymbol name="route" size={18} color={tayyarColors.textPrimary} />}
       />
 
       {stage === "handoff" ? (
@@ -378,7 +378,7 @@ export default function OrderDetailsScreen() {
             label={actionLabel}
             onPress={handlePrimaryAction}
             loading={submitting}
-            icon={<Ionicons name="arrow-forward-circle-outline" size={18} color="#071019" />}
+            icon={<HeroSymbol name="send" size={18} color="#071019" />}
           />
         }
       />

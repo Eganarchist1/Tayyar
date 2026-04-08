@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   EmptyState,
   GlassPanel,
@@ -133,7 +133,7 @@ export default function WalletScreen() {
           label={t(heroAppCopy.wallet.fullCashout)}
           onPress={handleCashout}
           loading={cashoutLoading}
-          icon={<Ionicons name="wallet-outline" size={18} color="#071019" />}
+          icon={<HeroSymbol name="wallet" size={18} color="#071019" />}
         />
       </GlassPanel>
 
@@ -156,11 +156,7 @@ export default function WalletScreen() {
               <GlassPanel key={transaction.id} style={styles.transactionCard}>
                 <View style={[styles.transactionRow, { flexDirection: rowDirection }]}>
                   <View style={[styles.transactionBadge, positive ? styles.incomingBadge : styles.outgoingBadge]}>
-                    <Ionicons
-                      name={positive ? "arrow-down-outline" : "arrow-up-outline"}
-                      size={18}
-                      color={positive ? tayyarColors.success : tayyarColors.warning}
-                    />
+                    <HeroSymbol name={positive ? "cash-in" : "cash-out"} size={18} color={positive ? tayyarColors.success : tayyarColors.warning} />
                   </View>
                   <View style={styles.transactionCopy}>
                     <Text style={[styles.transactionTitle, { fontFamily: getFontFamily(locale, "heading"), textAlign: align }]}>

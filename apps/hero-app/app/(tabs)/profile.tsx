@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { check, PERMISSIONS, RESULTS } from "react-native-permissions";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   EmptyState,
   GlassPanel,
@@ -164,7 +164,7 @@ export default function ProfileScreen() {
           label={t(heroAppCopy.common.signOut)}
           variant="outline"
           onPress={logout}
-          icon={<Ionicons name="log-out-outline" size={18} color={tayyarColors.textPrimary} />}
+          icon={<HeroSymbol name="logout" size={18} color={tayyarColors.textPrimary} />}
         />
       </GlassPanel>
 
@@ -233,7 +233,7 @@ export default function ProfileScreen() {
           label={t(heroAppCopy.profile.sendRequest)}
           onPress={submitVacationRequest}
           loading={submitting}
-          icon={<Ionicons name="send-outline" size={18} color="#071019" />}
+          icon={<HeroSymbol name="send" size={18} color="#071019" />}
         />
       </GlassPanel>
 

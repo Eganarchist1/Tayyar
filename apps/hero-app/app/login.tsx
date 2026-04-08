@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
+import { HeroSymbol } from "@/components/hero-symbol";
 import {
   Banner,
   FormField,
@@ -149,7 +149,7 @@ export default function LoginScreen() {
         <LocaleTogglePill />
         <View style={styles.logoWrap}>
           <View style={styles.logoBadge}>
-            <Ionicons name="paper-plane" size={34} color="#071019" />
+            <HeroSymbol name="brand" size={36} color="#071019" />
           </View>
           <Text style={[styles.brand, { fontFamily: getFontFamily(locale, "display") }]}>
             {t(heroAppCopy.common.heroBrand)}
@@ -184,10 +184,11 @@ export default function LoginScreen() {
                 placeholder="10XXXXXXXX"
                 textAlignVertical="center"
                 placeholderTextColor={tayyarColors.textTertiary}
+                selectionColor={tayyarColors.gold}
                 style={[
                   styles.phoneInput,
                   {
-                    textAlign: direction === "rtl" ? "right" : "left",
+                    textAlign: "right",
                     writingDirection: direction,
                     fontFamily: getFontFamily("en", "mono"),
                   },
@@ -211,10 +212,11 @@ export default function LoginScreen() {
                 placeholder="1234"
                 textAlignVertical="center"
                 placeholderTextColor={tayyarColors.textTertiary}
+                selectionColor={tayyarColors.gold}
                 style={[
                   styles.otpInput,
                   {
-                    textAlign: direction === "rtl" ? "right" : "left",
+                    textAlign: "right",
                     writingDirection: direction,
                     fontFamily: getFontFamily("en", "mono"),
                   },
@@ -247,7 +249,7 @@ export default function LoginScreen() {
           loading={loading}
           disabled={!canContinue}
           onPress={phase === "phone" ? requestCode : verifyCode}
-          icon={<Ionicons name={phase === "phone" ? "chatbubble-ellipses-outline" : "shield-checkmark-outline"} size={18} color="#071019" />}
+          icon={<HeroSymbol name={phase === "phone" ? "send" : "brand"} size={18} color="#071019" />}
         />
 
         {phase === "otp" ? (
@@ -319,6 +321,7 @@ const styles = StyleSheet.create({
     borderColor: tayyarColors.border,
     backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 18,
     gap: 14,
   },
@@ -326,11 +329,15 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 16,
     color: tayyarColors.goldLight,
+    minWidth: 56,
+    textAlign: "center",
   },
   phoneInput: {
     flex: 1,
     fontSize: 18,
     color: tayyarColors.textPrimary,
+    includeFontPadding: false,
+    paddingVertical: 0,
   },
   otpInput: {
     minHeight: 58,
@@ -341,5 +348,7 @@ const styles = StyleSheet.create({
     color: tayyarColors.textPrimary,
     fontSize: 24,
     letterSpacing: 8,
+    paddingHorizontal: 18,
+    includeFontPadding: false,
   },
 });

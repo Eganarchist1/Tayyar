@@ -3,17 +3,17 @@ import { I18nManager, Pressable, StatusBar, StyleSheet, Text, View } from "react
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import Ionicons from "react-native-vector-icons/Ionicons";
 import HomeScreen from "@/app/(tabs)/index";
 import MissionsScreen from "@/app/(tabs)/missions";
 import WalletScreen from "@/app/(tabs)/wallet";
 import ProfileScreen from "@/app/(tabs)/profile";
 import LoginScreen from "@/app/login";
 import OrderDetailsScreen from "@/app/order/[id]";
+import { HeroSymbol } from "@/components/hero-symbol";
 import { HeroLoadingShell } from "@/components/tayyar-ui";
 import { getFontFamily, tayyarColors } from "@/lib/design";
-import { HeroLocaleProvider, useHeroLocale } from "@/lib/locale";
 import { registerHeroDevice } from "@/lib/device-registration";
+import { HeroLocaleProvider, useHeroLocale } from "@/lib/locale";
 import type { HeroMainTabParamList, HeroRootStackParamList } from "@/lib/navigation";
 import { useAuthStore } from "@/store/authStore";
 
@@ -43,11 +43,11 @@ function DriverTabBar({ state, navigation }: BottomTabBarProps) {
     Profile: locale === "ar" ? "الحساب" : "Profile",
   };
 
-  const icons: Record<keyof HeroMainTabParamList, string> = {
-    Home: "grid-outline",
-    Missions: "map-outline",
-    Wallet: "wallet-outline",
-    Profile: "person-outline",
+  const icons: Record<keyof HeroMainTabParamList, "home" | "missions" | "wallet" | "profile"> = {
+    Home: "home",
+    Missions: "missions",
+    Wallet: "wallet",
+    Profile: "profile",
   };
 
   return (
@@ -63,11 +63,7 @@ function DriverTabBar({ state, navigation }: BottomTabBarProps) {
                 style={({ pressed }) => [styles.tabPressable, pressed && styles.tabPressablePressed]}
               >
                 <View style={[styles.tabPressFrame, focused && styles.tabPressFrameActive]}>
-                  <Ionicons
-                    name={icons[tabName]}
-                    size={22}
-                    color={focused ? "#071019" : tayyarColors.textSecondary}
-                  />
+                  <HeroSymbol name={icons[tabName]} size={22} color={focused ? "#071019" : tayyarColors.textSecondary} />
                 </View>
                 <Text
                   style={[
