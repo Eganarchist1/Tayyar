@@ -19,22 +19,27 @@ sleep 25
 adb shell pidof com.tayyar.hero > hero-pid.txt
 adb shell uiautomator dump /sdcard/hero-ui.xml >/dev/null
 adb pull /sdcard/hero-ui.xml hero-ui.xml
+adb logcat -d > hero-logcat.txt
 
 python - <<'PY'
 from pathlib import Path
 
-text = Path("hero-ui.xml").read_text(encoding="utf-8", errors="ignore")
-terms = [
-    "طيار هيرو",
-    "رقم الهاتف",
-    "رمز الدخول",
-    "لوحة العمل",
-    "المهام",
-    "المحفظة",
-    "Phone number",
-    "Dashboard",
+pid = Path("hero-pid.txt").read_text(encoding="utf-8", errors="ignore").strip()
+if not pid:
+    raise SystemExit("Hero app process is not running after launch.")
+
+logcat = Path("hero-logcat.txt").read_text(encoding="utf-8", errors="ignore")
+fatal_markers = [
+    "FATAL EXCEPTION",
+    "Process: com.tayyar.hero",
+    "Force finishing activity com.tayyar.hero",
+    "ANR in com.tayyar.hero",
+    "Theme.AppCompat",
 ]
 
-if not any(term in text for term in terms):
-    raise SystemExit(1)
+if any(marker in logcat for marker in fatal_markers):
+    raise SystemExit("Hero app crash marker found in logcat.")
+
+if "Displayed com.tayyar.hero/.MainActivity" not in logcat:
+    raise SystemExit("Hero main activity was not displayed.")
 PY
