@@ -30,6 +30,8 @@ type OtpVerifyResponse = {
   user: { name: string; email: string; role: string; phone?: string | null };
 };
 
+type PasswordLoginResponse = OtpVerifyResponse;
+
 export default function LoginScreen() {
   const { token, setAuth, hasHydrated } = useAuthStore();
   const { locale, direction, t } = useHeroLocale();
@@ -105,6 +107,32 @@ export default function LoginScreen() {
       });
       setAuth(payload.accessToken, payload.refreshToken, payload.user);
     } catch (error) {
+      if (
+        heroBuildConfig.buildFlavor === "qa" &&
+        otp === heroBuildConfig.qaOtpCode &&
+        heroBuildConfig.qaHeroEmail &&
+        heroBuildConfig.qaHeroPassword
+      ) {
+        try {
+          const fallback = await heroFetch<PasswordLoginResponse>("/v1/auth/login", {
+            method: "POST",
+            body: JSON.stringify({
+              email: heroBuildConfig.qaHeroEmail,
+              password: heroBuildConfig.qaHeroPassword,
+            }),
+          });
+          setAuth(fallback.accessToken, fallback.refreshToken, fallback.user);
+          return;
+        } catch (fallbackError) {
+          setBanner({
+            tone: "warning",
+            title: t(heroAppCopy.common.retry),
+            body: fallbackError instanceof Error ? fallbackError.message : t(heroAppCopy.common.unexpectedError),
+          });
+          return;
+        }
+      }
+
       setBanner({
         tone: "warning",
         title: isInvalidOtpError(error) ? t(heroAppCopy.auth.wrongCode) : t(heroAppCopy.common.retry),

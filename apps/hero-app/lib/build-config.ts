@@ -5,5 +5,7 @@ export const heroBuildConfig = {
   buildFlavor: "qa",
   qaHeroPhone: "+201000000004",
   qaOtpCode: "1234",
+  qaHeroEmail: "hero.qa.mobile@tayyar.app",
+  qaHeroPassword: "Tayyar@123",
   trustedDevice: true,
 } as const;
