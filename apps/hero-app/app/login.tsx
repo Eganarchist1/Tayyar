@@ -182,11 +182,13 @@ export default function LoginScreen() {
                 onChangeText={(value) => setPhone(value.replace(/[^\d]/g, "").slice(0, 11))}
                 keyboardType="phone-pad"
                 placeholder="10XXXXXXXX"
+                textAlignVertical="center"
                 placeholderTextColor={tayyarColors.textTertiary}
                 style={[
                   styles.phoneInput,
                   {
                     textAlign: direction === "rtl" ? "right" : "left",
+                    writingDirection: direction,
                     fontFamily: getFontFamily("en", "mono"),
                   },
                 ]}
@@ -207,11 +209,13 @@ export default function LoginScreen() {
                 maxLength={4}
                 autoFocus
                 placeholder="1234"
+                textAlignVertical="center"
                 placeholderTextColor={tayyarColors.textTertiary}
                 style={[
                   styles.otpInput,
                   {
-                    textAlign: "center",
+                    textAlign: direction === "rtl" ? "right" : "left",
+                    writingDirection: direction,
                     fontFamily: getFontFamily("en", "mono"),
                   },
                 ]}

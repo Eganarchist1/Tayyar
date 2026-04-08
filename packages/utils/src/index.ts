@@ -81,11 +81,14 @@ export function formatLocalizedDate(
 }
 
 function shouldPreferLocalApi(configuredBaseUrl: string) {
-  if (typeof window === "undefined") {
+  const pageHost =
+    typeof window !== "undefined" && typeof window.location?.hostname === "string"
+      ? window.location.hostname
+      : null;
+
+  if (!pageHost) {
     return false;
   }
-
-  const pageHost = window.location.hostname;
   const localHosts = new Set(["localhost", "127.0.0.1"]);
   if (!localHosts.has(pageHost)) {
     return false;
