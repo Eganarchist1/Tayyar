@@ -3,6 +3,7 @@ import { I18nManager, Pressable, StatusBar, StyleSheet, Text, View } from "react
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import HomeScreen from "@/app/(tabs)/index";
 import MissionsScreen from "@/app/(tabs)/missions";
 import WalletScreen from "@/app/(tabs)/wallet";
@@ -34,6 +35,7 @@ const navigationTheme = {
 
 function DriverTabBar({ state, navigation }: BottomTabBarProps) {
   const { locale, direction } = useHeroLocale();
+  const insets = useSafeAreaInsets();
   const row = direction === "rtl" ? "row-reverse" : "row";
 
   const labels: Record<keyof HeroMainTabParamList, string> = {
@@ -51,11 +53,12 @@ function DriverTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   return (
-    <View style={styles.tabWrap}>
-      <View style={[styles.tabBar, { flexDirection: row }]}>
+    <View style={[styles.tabWrap, { bottom: insets.bottom + 12 }]}>
+      <View style={[styles.tabBar, { flexDirection: row, paddingBottom: 14 + Math.max(insets.bottom - 4, 0) }]}>
         {state.routes.map((route, index) => {
           const tabName = route.name as keyof HeroMainTabParamList;
           const focused = state.index === index;
+
           return (
             <View key={route.key} style={styles.tabItem}>
               <Pressable
@@ -134,9 +137,11 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <HeroLocaleProvider>
-      <AppNavigator />
-    </HeroLocaleProvider>
+    <SafeAreaProvider>
+      <HeroLocaleProvider>
+        <AppNavigator />
+      </HeroLocaleProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -145,13 +150,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 14,
     right: 14,
-    bottom: 14,
   },
   tabBar: {
     borderRadius: 28,
     paddingHorizontal: 10,
     paddingTop: 12,
-    paddingBottom: 14,
     backgroundColor: "rgba(12, 21, 33, 0.98)",
     borderWidth: 1,
     borderColor: tayyarColors.border,

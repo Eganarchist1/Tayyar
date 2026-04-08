@@ -52,7 +52,6 @@ export default function LoginScreen() {
   const phoneDigits = phone.replace(/\D/g, "");
   const canContinue = phase === "phone" ? phoneDigits.length >= 10 : otp.length === 4;
   const align = direction === "rtl" ? "right" : "left";
-  const rowDirection = direction === "rtl" ? "row-reverse" : "row";
 
   async function requestCode() {
     setLoading(true);
@@ -175,21 +174,23 @@ export default function LoginScreen() {
 
         {phase === "phone" ? (
           <FormField label={t(heroAppCopy.auth.phoneLabel)} hint={heroBuildConfig.buildFlavor === "qa" ? t(heroAppCopy.auth.qaHint) : undefined}>
-            <View style={[styles.phoneInputShell, { flexDirection: rowDirection }]}>
+            <View style={styles.phoneInputShell}>
               <Text style={styles.countryCode}>+20</Text>
               <TextInput
                 value={phone}
                 onChangeText={(value) => setPhone(value.replace(/[^\d]/g, "").slice(0, 11))}
                 keyboardType="phone-pad"
                 placeholder="10XXXXXXXX"
+                importantForAutofill="yes"
+                autoComplete="tel"
                 textAlignVertical="center"
                 placeholderTextColor={tayyarColors.textTertiary}
                 selectionColor={tayyarColors.gold}
                 style={[
                   styles.phoneInput,
                   {
-                    textAlign: "right",
-                    writingDirection: direction,
+                    textAlign: "left",
+                    writingDirection: "ltr",
                     fontFamily: getFontFamily("en", "mono"),
                   },
                 ]}
@@ -216,8 +217,8 @@ export default function LoginScreen() {
                 style={[
                   styles.otpInput,
                   {
-                    textAlign: "right",
-                    writingDirection: direction,
+                    textAlign: "left",
+                    writingDirection: "ltr",
                     fontFamily: getFontFamily("en", "mono"),
                   },
                 ]}
@@ -315,6 +316,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   phoneInputShell: {
+    flexDirection: "row",
     minHeight: 64,
     borderRadius: tayyarRadii.lg,
     borderWidth: 1,
@@ -330,7 +332,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: tayyarColors.goldLight,
     minWidth: 56,
-    textAlign: "center",
+    textAlign: "left",
   },
   phoneInput: {
     flex: 1,
@@ -349,6 +351,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     letterSpacing: 8,
     paddingHorizontal: 18,
+    paddingLeft: 22,
     includeFontPadding: false,
   },
 });

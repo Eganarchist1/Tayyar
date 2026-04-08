@@ -11,7 +11,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getFontFamily,
   getHeroStatusMeta,
@@ -47,20 +47,21 @@ export function TayyarScreen({
   contentContainerStyle?: ScrollViewProps["contentContainerStyle"];
   refreshControl?: ScrollViewProps["refreshControl"];
 }) {
+  const insets = useSafeAreaInsets();
   const content = scroll ? (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={[styles.screenContent, contentContainerStyle]}
+      contentContainerStyle={[styles.screenContent, { paddingBottom: 120 + insets.bottom }, contentContainerStyle]}
       refreshControl={refreshControl}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.screenContent, contentContainerStyle as ViewStyle]}>{children}</View>
+    <View style={[styles.screenContent, { paddingBottom: 120 + insets.bottom }, contentContainerStyle as ViewStyle]}>{children}</View>
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <View style={styles.glowSky} />
       <View style={styles.glowGold} />
       {content}
@@ -364,9 +365,8 @@ export function OtpCodeInput({
   value: string;
   onChangeText: (value: string) => void;
 }) {
-  const { direction } = useHeroLocale();
   return (
-    <View style={[styles.otpRow, { flexDirection: rowDirection(direction) }]}>
+    <View style={styles.otpRow}>
       {[0, 1, 2, 3].map((index) => (
         <View key={index} style={[styles.otpBox, value[index] ? styles.otpBoxFilled : null]}>
           <Text style={[styles.otpDigit, { fontFamily: getFontFamily("en", "mono") }]}>{value[index] || ""}</Text>
@@ -410,7 +410,6 @@ const styles = StyleSheet.create({
     gap: tayyarSpacing.lg,
     paddingTop: tayyarSpacing.sm,
     paddingHorizontal: tayyarSpacing.lg,
-    paddingBottom: 120,
   },
   glowSky: {
     position: "absolute",
@@ -634,6 +633,7 @@ const styles = StyleSheet.create({
     gap: tayyarSpacing.sm,
   },
   otpRow: {
+    flexDirection: "row",
     gap: tayyarSpacing.sm,
     justifyContent: "space-between",
   },

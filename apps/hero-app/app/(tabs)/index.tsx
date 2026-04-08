@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, AppState, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HeroSymbol } from "@/components/hero-symbol";
 import {
@@ -61,6 +61,7 @@ export default function HeroHomeScreen() {
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [pendingSyncCount, setPendingSyncCount] = React.useState(0);
   const [lastSyncAt, setLastSyncAt] = React.useState<Date | null>(null);
+  const [needsLocationRetry, setNeedsLocationRetry] = React.useState(false);
   const [feedback, setFeedback] = React.useState<{ tone: "accent" | "warning" | "success"; title: string; body: string } | null>(null);
 
   const loadData = React.useCallback(async () => {
@@ -96,13 +97,41 @@ export default function HeroHomeScreen() {
         }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
   }, [loadData, refreshQueue, t, token]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      if (nextState !== "active" || !needsLocationRetry || !token || hero?.status !== "ONLINE") {
+        return;
+      }
+
+      try {
+        const result = await initBackgroundLocation(token);
+        if (result.hasFix) {
+          setNeedsLocationRetry(false);
+          setFeedback({
+            tone: "success",
+            title: t(heroAppCopy.home.ready),
+            body: locale === "ar" ? "تم تفعيل الموقع ويمكن استقبال المهام الآن." : "Location is ready and you can receive missions now.",
+          });
+        }
+      } catch {
+        // Keep the current banner until the user retries.
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [hero?.status, needsLocationRetry, t, token]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
@@ -121,15 +150,21 @@ export default function HeroHomeScreen() {
 
   async function handleToggleStatus() {
     if (!hero) return;
+
     const nextStatus = hero.status === "OFFLINE" ? "ONLINE" : "OFFLINE";
     setStatusLoading(true);
     setFeedback(null);
 
     try {
+      let promptedToEnableServices = false;
+
       if (nextStatus === "ONLINE") {
-        await initBackgroundLocation(token);
+        const result = await initBackgroundLocation(token);
+        promptedToEnableServices = result.promptedToEnableServices;
+        setNeedsLocationRetry(result.promptedToEnableServices);
       } else {
         await stopLocationTracking();
+        setNeedsLocationRetry(false);
       }
 
       await heroFetch(
@@ -143,11 +178,22 @@ export default function HeroHomeScreen() {
 
       await loadData();
       heroFeedback.success();
-      setFeedback({
-        tone: "success",
-        title: t(heroAppCopy.home.ready),
-        body: t(heroAppCopy.common.syncedNow),
-      });
+      setFeedback(
+        nextStatus === "ONLINE" && promptedToEnableServices
+          ? {
+              tone: "warning",
+              title: t(heroAppCopy.home.ready),
+              body:
+                locale === "ar"
+                  ? "تم تشغيل الجاهزية، وسنحدّث الموقع فور تفعيل الخدمات أو وصول أول إشارة."
+                  : "You are online. Location will update as soon as services are available.",
+            }
+          : {
+              tone: "success",
+              title: t(heroAppCopy.home.ready),
+              body: t(heroAppCopy.common.syncedNow),
+            },
+      );
     } catch (error) {
       if (isRetryableHeroError(error)) {
         await enqueueHeroAction({
@@ -197,7 +243,12 @@ export default function HeroHomeScreen() {
       <TopBrandBar
         title={locale === "ar" ? `أهلاً ${pilotName.split(" ")[0]}` : `Hello ${pilotName.split(" ")[0]}`}
         subtitle={t(heroAppCopy.home.subtitle)}
-        rightSlot={<StatusPill label={hero?.status === "OFFLINE" ? (locale === "ar" ? "غير متصل" : "Offline") : (locale === "ar" ? "جاهز" : "Online")} tone={activeStatus} />}
+        rightSlot={
+          <StatusPill
+            label={hero?.status === "OFFLINE" ? (locale === "ar" ? "غير متصل" : "Offline") : (locale === "ar" ? "جاهز" : "Online")}
+            tone={activeStatus}
+          />
+        }
       />
 
       {feedback ? <Banner title={feedback.title} body={feedback.body} tone={feedback.tone} /> : null}
@@ -240,7 +291,7 @@ export default function HeroHomeScreen() {
       <SectionHeading
         eyebrow={t(heroAppCopy.home.currentMission)}
         title={currentMission ? currentMission.orderNumber : t(heroAppCopy.home.noMissionTitle)}
-        subtitle={currentMission ? (currentMission.deliveryAddress || t(heroAppCopy.missions.address)) : t(heroAppCopy.home.noMissionBody)}
+        subtitle={currentMission ? currentMission.deliveryAddress || t(heroAppCopy.missions.address) : t(heroAppCopy.home.noMissionBody)}
       />
 
       {currentMission ? (
@@ -248,11 +299,15 @@ export default function HeroHomeScreen() {
           <View style={[styles.missionTop, { flexDirection: rowDirection }]}>
             <View style={styles.missionCopy}>
               <Text style={[styles.missionNumber, { textAlign: align }]}>{currentMission.orderNumber}</Text>
-              <Text style={[styles.missionBranch, { textAlign: align }]}>{currentMission.branch?.name || t(heroAppCopy.missions.branch)}</Text>
+              <Text style={[styles.missionBranch, { textAlign: align }]}>
+                {currentMission.branch?.name || t(heroAppCopy.missions.branch)}
+              </Text>
             </View>
             <StatusPill label={statusLabel(currentMission.status, locale)} tone={currentMission.status} />
           </View>
-          <Text style={[styles.missionAddress, { textAlign: align }]}>{currentMission.deliveryAddress || t(heroAppCopy.common.noData)}</Text>
+          <Text style={[styles.missionAddress, { textAlign: align }]}>
+            {currentMission.deliveryAddress || t(heroAppCopy.common.noData)}
+          </Text>
           <BottomActionDock
             primary={
               <TayyarButton
