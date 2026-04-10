@@ -119,7 +119,7 @@ export default function AdminUsersPage() {
     supervisorZoneIds: [] as string[],
   });
 
-  const activationManagedCreate = !editing && !form.password.trim();
+  const activationManagedCreate = !editing && form.role !== "HERO" && !form.password.trim();
 
   const loadUsers = React.useCallback(async () => {
     const params = new URLSearchParams();

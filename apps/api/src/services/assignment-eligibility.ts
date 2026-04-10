@@ -27,6 +27,42 @@ export type EligibleHeroOption = {
   assignmentReason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE";
 };
 
+export type EligibleHeroViewModel = {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string | null;
+  status: string;
+  distanceKm: number;
+  activeOrders: number;
+  ordersToday: number;
+  assignmentReason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE";
+  zone: {
+    id: string | null;
+    name: string | null;
+    nameAr: string | null;
+  };
+};
+
+export function buildEligibleHeroViewModel(hero: EligibleHeroOption): EligibleHeroViewModel {
+  return {
+    id: hero.heroId,
+    userId: hero.userId,
+    name: hero.name,
+    phone: hero.phone,
+    status: hero.status,
+    distanceKm: hero.distanceKm,
+    activeOrders: hero.activeOrders,
+    ordersToday: hero.ordersToday,
+    assignmentReason: hero.assignmentReason,
+    zone: {
+      id: hero.zoneId,
+      name: hero.zoneName,
+      nameAr: hero.zoneNameAr,
+    },
+  };
+}
+
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const earthRadiusKm = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;

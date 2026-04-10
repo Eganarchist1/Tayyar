@@ -3,6 +3,7 @@
 import React from "react";
 import { Card, PageHeader, PageShell, StatusPill, text, useLocale } from "@tayyar/ui";
 import { apiFetch } from "@/lib/api";
+import { formatLocalizedDateTime } from "@tayyar/utils";
 
 type SupervisorHeroRecord = {
   id: string;
@@ -12,6 +13,12 @@ type SupervisorHeroRecord = {
   totalDeliveries: number;
   currentLat?: number | null;
   currentLng?: number | null;
+  totalKmToday: number;
+  rideMinutesToday: number;
+  checkInAt?: string | null;
+  checkOutAt?: string | null;
+  breakMinutesToday: number;
+  onBreakSince?: string | null;
   user: {
     name: string;
     phone?: string | null;
@@ -47,6 +54,10 @@ function heroStatusLabel(locale: "ar" | "en", status: string) {
   if (status === "ON_DELIVERY") return tx(locale, "في مهمة", "On delivery");
   if (status === "ON_BREAK") return tx(locale, "استراحة", "On break");
   return tx(locale, "غير متصل", "Offline");
+}
+
+function formatMinutes(locale: "ar" | "en", minutes: number) {
+  return `${minutes} ${tx(locale, "دقيقة", "min")}`;
 }
 
 export default function SupervisorHeroesPage() {
@@ -98,13 +109,13 @@ export default function SupervisorHeroesPage() {
       role="SUPERVISOR"
       user={{ name: text("مشرف المنطقة", "Zone supervisor"), email: "supervisor@tayyar.app" }}
       pageTitle={text("الطيارون", "Heroes")}
-      pageSubtitle={text("الحالة الحالية والتكليفات داخل نطاقك.", "Current status and assignments in your scope.")}
+      pageSubtitle={text("الحالة الحالية والتكليفات ومؤشرات الوردية داخل نطاقك.", "Current status, assignments, and today shift metrics in your scope.")}
     >
       <div className="space-y-8">
         <PageHeader
           eyebrow={text("الطيارون", "Heroes")}
           title={text("فريق التوصيل", "Delivery crew")}
-          subtitle={text("راجع الحالة والتوثيق والتكليفات من شاشة واحدة.", "Review status, verification, and assignments from one screen.")}
+          subtitle={text("راجع الحالة والتوثيق والتكليفات والمؤشرات اليومية من شاشة واحدة.", "Review status, verification, assignments, and today metrics from one screen.")}
           breadcrumbs={[
             { label: text("الإشراف", "Supervisor"), href: "/supervisor/map" },
             { label: text("الطيارون", "Heroes") },
@@ -134,14 +145,12 @@ export default function SupervisorHeroesPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-lg font-black text-[var(--text-primary)]">{hero.user.name}</div>
-                  <div className="mt-1 text-sm font-bold text-[var(--text-secondary)]">
-                    {pickLabel(locale, hero.zone?.nameAr, hero.zone?.name)}
-                  </div>
+                  <div className="mt-1 text-sm font-bold text-[var(--text-secondary)]">{pickLabel(locale, hero.zone?.nameAr, hero.zone?.name)}</div>
                   <div className="mt-1 font-mono text-xs text-[var(--text-tertiary)]" dir="ltr">
                     {hero.user.phone || hero.user.email || "--"}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-end">
+                <div className="flex flex-wrap justify-end gap-2">
                   <StatusPill label={heroStatusLabel(locale, hero.status)} tone={heroStatusTone(hero.status)} />
                   <StatusPill
                     label={hero.verificationStatus === "APPROVED" ? tx(locale, "موثق", "Verified") : tx(locale, "قيد المراجعة", "Pending")}
@@ -150,38 +159,59 @@ export default function SupervisorHeroesPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "كم اليوم", "Km today")}</div>
+                  <div className="mt-2 font-mono text-xl font-black text-[var(--text-primary)]">{hero.totalKmToday.toFixed(1)}</div>
+                </div>
+                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "مدة الرحلات", "Ride minutes")}</div>
+                  <div className="mt-2 font-mono text-xl font-black text-[var(--text-primary)]">{formatMinutes(locale, hero.rideMinutesToday)}</div>
+                </div>
                 <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
                   <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "الطلبات المكتملة", "Completed orders")}</div>
                   <div className="mt-2 font-mono text-xl font-black text-[var(--text-primary)]">{hero.totalDeliveries}</div>
                 </div>
-                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4 sm:col-span-2">
-                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "الموقع الحالي", "Current location")}</div>
-                  <div className="mt-2 font-mono text-sm tracking-wide text-[var(--text-secondary)]" dir="ltr">
-                    {hero.currentLat?.toFixed(5) || "--"}, {hero.currentLng?.toFixed(5) || "--"}
+                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "بداية الوردية", "Check-in")}</div>
+                  <div className="mt-2 text-sm font-bold text-[var(--text-primary)]">
+                    {hero.checkInAt ? formatLocalizedDateTime(hero.checkInAt, locale) : tx(locale, "لم يبدأ اليوم", "Not checked in")}
+                  </div>
+                </div>
+                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "نهاية الوردية", "Check-out")}</div>
+                  <div className="mt-2 text-sm font-bold text-[var(--text-primary)]">
+                    {hero.checkOutAt ? formatLocalizedDateTime(hero.checkOutAt, locale) : tx(locale, "لم يسجل خروجًا", "Not checked out")}
+                  </div>
+                </div>
+                <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                  <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "وقت الاستراحة", "Break time")}</div>
+                  <div className="mt-2 text-sm font-bold text-[var(--text-primary)]">{formatMinutes(locale, hero.breakMinutesToday)}</div>
+                  <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+                    {hero.onBreakSince
+                      ? tx(locale, `في استراحة منذ ${formatLocalizedDateTime(hero.onBreakSince, locale)}`, `On break since ${formatLocalizedDateTime(hero.onBreakSince, locale)}`)
+                      : tx(locale, "ليس على استراحة الآن", "Not currently on break")}
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wide">
-                  {tx(locale, "التكليفات الحالية", "Active assignments")}
+              <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
+                <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "الموقع الحالي", "Current location")}</div>
+                <div className="mt-2 font-mono text-sm tracking-wide text-[var(--text-secondary)]" dir="ltr">
+                  {hero.currentLat?.toFixed(5) || "--"}, {hero.currentLng?.toFixed(5) || "--"}
                 </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-[var(--text-tertiary)]">{tx(locale, "التكليفات الحالية", "Active assignments")}</div>
                 {hero.assignments.length ? (
                   hero.assignments.map((assignment) => (
-                    <div
-                      key={assignment.id}
-                      className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] px-4 py-3 text-sm flex justify-between items-center gap-4"
-                    >
+                    <div key={assignment.id} className="flex items-center justify-between gap-4 rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] px-4 py-3 text-sm">
                       <div>
-                        <div className="font-bold text-[var(--text-primary)]">
-                          {pickLabel(locale, assignment.branch.nameAr, assignment.branch.name)}
-                        </div>
-                        <div className="mt-1 font-medium text-[var(--text-secondary)]">
-                          {pickLabel(locale, assignment.branch.merchantNameAr, assignment.branch.merchantName)}
-                        </div>
+                        <div className="font-bold text-[var(--text-primary)]">{pickLabel(locale, assignment.branch.nameAr, assignment.branch.name)}</div>
+                        <div className="mt-1 font-medium text-[var(--text-secondary)]">{pickLabel(locale, assignment.branch.merchantNameAr, assignment.branch.merchantName)}</div>
                       </div>
-                      <div className="text-xs font-bold bg-[var(--primary-600)] bg-opacity-10 text-[var(--primary-600)] dark:text-[var(--primary-300)] border border-[var(--primary-500)] border-opacity-30 rounded-full px-3 py-1">
+                      <div className="rounded-full border border-[var(--primary-500)] border-opacity-30 bg-[var(--primary-600)] bg-opacity-10 px-3 py-1 text-xs font-bold text-[var(--primary-600)] dark:text-[var(--primary-300)]">
                         {assignment.model}
                       </div>
                     </div>
@@ -196,7 +226,7 @@ export default function SupervisorHeroesPage() {
           ))}
 
           {!loading && !heroes.length ? (
-            <div className="rounded-[24px] border border-dashed border-[var(--border-default)] px-5 py-10 text-center text-sm text-[var(--text-secondary)] col-span-full">
+            <div className="col-span-full rounded-[24px] border border-dashed border-[var(--border-default)] px-5 py-10 text-center text-sm text-[var(--text-secondary)]">
               {tx(locale, "لا يوجد طيارون داخل نطاقك الآن.", "There are no heroes in your scope right now.")}
             </div>
           ) : null}

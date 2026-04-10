@@ -35,9 +35,27 @@ type AdminOrder = {
     status: string;
     distanceKm: number;
     activeOrders: number;
+    ordersToday?: number;
     assignmentReason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE";
     zone: { id?: string | null; name?: string | null; nameAr?: string | null };
   }>;
+};
+
+type BranchRecord = {
+  id: string;
+  name: string;
+  nameAr?: string | null;
+  merchant: {
+    id: string;
+    name: string;
+    nameAr?: string | null;
+  };
+};
+
+type ZoneRecord = {
+  id: string;
+  name: string;
+  nameAr?: string | null;
 };
 
 type ActionState = {
@@ -45,63 +63,98 @@ type ActionState = {
   orderId: string;
 };
 
+const ASSIGNABLE_STATUSES = new Set(["REQUESTED", "ASSIGNED", "HERO_ACCEPTED"]);
+
 const tx = (locale: "ar" | "en", ar: string, en: string) => (locale === "ar" ? ar : en);
 const pickLabel = (locale: "ar" | "en", ar?: string | null, en?: string | null) =>
   locale === "ar" ? ar || en || "--" : en || ar || "--";
+
 const assignmentReasonLabel = (locale: "ar" | "en", reason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE") =>
   reason === "DEDICATED_BRANCH"
-    ? tx(locale, "مخصص للفرع", "Dedicated branch")
-    : tx(locale, "الأقرب في النطاق", "Nearest in zone");
+    ? tx(locale, "مخصص لهذا الفرع", "Dedicated branch")
+    : tx(locale, "الأقرب داخل النطاق", "Nearest in zone");
+
 const distanceLabel = (locale: "ar" | "en", value: number) =>
   Number.isFinite(value) ? `${value.toFixed(1)} ${tx(locale, "كم", "km")}` : tx(locale, "بانتظار الموقع الحي", "Awaiting live location");
-
-const ASSIGNABLE_STATUSES = new Set(["REQUESTED", "ASSIGNED", "HERO_ACCEPTED"]);
 
 export default function AdminOrdersPage() {
   const { locale, direction } = useLocale();
   const [orders, setOrders] = React.useState<AdminOrder[]>([]);
+  const [branches, setBranches] = React.useState<BranchRecord[]>([]);
+  const [zones, setZones] = React.useState<ZoneRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [merchantFilter, setMerchantFilter] = React.useState("");
+  const [branchFilter, setBranchFilter] = React.useState("");
+  const [zoneFilter, setZoneFilter] = React.useState("");
   const [feedback, setFeedback] = React.useState<{ tone: "success" | "gold"; message: string } | null>(null);
   const [selectionByOrder, setSelectionByOrder] = React.useState<Record<string, string>>({});
   const [actionState, setActionState] = React.useState<ActionState | null>(null);
   const { lastMessage } = useSocket(["orders"]);
 
-  const loadData = React.useCallback(async (showLoading: boolean) => {
-    if (showLoading) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
-
-    try {
-      const ordersData = await apiFetch<AdminOrder[]>("/v1/admin/orders", undefined, "ADMIN");
-      setOrders(ordersData);
-      setSelectionByOrder((current) => {
-        const next = { ...current };
-        for (const order of ordersData) {
-          next[order.id] = current[order.id] || order.hero?.id || "";
-        }
-        return next;
-      });
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      } else {
-        setRefreshing(false);
-      }
-    }
+  const loadFilters = React.useCallback(async () => {
+    const [branchData, zoneData] = await Promise.all([
+      apiFetch<BranchRecord[]>("/v1/admin/branches?status=ACTIVE", undefined, "ADMIN"),
+      apiFetch<ZoneRecord[]>("/v1/admin/zones", undefined, "ADMIN"),
+    ]);
+    setBranches(branchData);
+    setZones(zoneData);
   }, []);
 
+  const loadData = React.useCallback(
+    async (showLoading: boolean) => {
+      if (showLoading) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+
+      try {
+        const params = new URLSearchParams();
+        const normalizedQuery = query.trim();
+        if (normalizedQuery) {
+          params.set("q", normalizedQuery);
+        }
+        if (merchantFilter) {
+          params.set("merchantId", merchantFilter);
+        }
+        if (branchFilter) {
+          params.set("branchId", branchFilter);
+        }
+        if (zoneFilter) {
+          params.set("zoneId", zoneFilter);
+        }
+
+        const path = params.size ? `/v1/admin/orders?${params.toString()}` : "/v1/admin/orders";
+        const ordersData = await apiFetch<AdminOrder[]>(path, undefined, "ADMIN");
+        setOrders(ordersData);
+        setSelectionByOrder((current) => {
+          const next = { ...current };
+          for (const order of ordersData) {
+            next[order.id] = current[order.id] || order.hero?.id || "";
+          }
+          return next;
+        });
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        } else {
+          setRefreshing(false);
+        }
+      }
+    },
+    [branchFilter, merchantFilter, query, zoneFilter],
+  );
+
   React.useEffect(() => {
-    loadData(true).catch((error: unknown) => {
+    Promise.all([loadData(true), loadFilters()]).catch((error: unknown) => {
       setFeedback({
         tone: "gold",
-        message: error instanceof Error ? error.message : tx(locale, "تعذر تحميل الطلبات.", "Could not load orders."),
+        message: error instanceof Error ? error.message : tx(locale, "تعذر تحميل لوحة الإسناد.", "Could not load the dispatch board."),
       });
     });
-  }, [loadData, locale]);
+  }, [loadData, loadFilters, locale]);
 
   React.useEffect(() => {
     if (!lastMessage) {
@@ -121,26 +174,45 @@ export default function AdminOrdersPage() {
     return () => window.clearInterval(timer);
   }, [loadData]);
 
-  const visibleOrders = React.useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return orders;
+  const merchantOptions = React.useMemo(() => {
+    const seen = new Map<string, { value: string; label: string }>();
+    for (const branch of branches) {
+      if (!seen.has(branch.merchant.id)) {
+        seen.set(branch.merchant.id, {
+          value: branch.merchant.id,
+          label: pickLabel(locale, branch.merchant.nameAr, branch.merchant.name),
+        });
+      }
     }
+    return Array.from(seen.values()).sort((left, right) => left.label.localeCompare(right.label, locale));
+  }, [branches, locale]);
 
-    return orders.filter((order) =>
-      [
-        order.orderNumber,
-        order.branch.brandName,
-        order.branch.name,
-        order.branch.nameAr,
-        order.customerName,
-        order.customerPhone,
-        order.deliveryAddress,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedQuery)),
-    );
-  }, [orders, query]);
+  const branchOptions = React.useMemo(() => {
+    return branches
+      .filter((branch) => !merchantFilter || branch.merchant.id === merchantFilter)
+      .map((branch) => ({
+        value: branch.id,
+        label: `${pickLabel(locale, branch.nameAr, branch.name)} • ${pickLabel(locale, branch.merchant.nameAr, branch.merchant.name)}`,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, locale));
+  }, [branches, locale, merchantFilter]);
+
+  const zoneOptions = React.useMemo(
+    () =>
+      zones
+        .map((zone) => ({
+          value: zone.id,
+          label: pickLabel(locale, zone.nameAr, zone.name),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label, locale)),
+    [locale, zones],
+  );
+
+  React.useEffect(() => {
+    if (branchFilter && !branchOptions.some((branch) => branch.value === branchFilter)) {
+      setBranchFilter("");
+    }
+  }, [branchFilter, branchOptions]);
 
   const chips = React.useMemo(
     () => [
@@ -163,7 +235,7 @@ export default function AdminOrdersPage() {
     if (!heroId) {
       setFeedback({
         tone: "gold",
-        message: tx(locale, "اختر طيارا أولا.", "Select a hero first."),
+        message: tx(locale, "اختر طيارًا أولًا.", "Select a hero first."),
       });
       return;
     }
@@ -235,7 +307,7 @@ export default function AdminOrdersPage() {
           eyebrow={{ ar: "غرفة الطلبات", en: "Order room" }}
           title={{ ar: "الإسناد والمتابعة", en: "Dispatch and follow-up" }}
           subtitle={{
-            ar: "راجع الحالة وغير الطيار أو أعد الطلب إلى الإسناد عند الحاجة.",
+            ar: "راجع الحالة وغيّر الطيار أو أعد الطلب إلى الإسناد عند الحاجة.",
             en: "Review status, reassign heroes, or send the order back to dispatch when needed.",
           }}
           breadcrumbs={[
@@ -246,19 +318,50 @@ export default function AdminOrdersPage() {
         />
 
         <Card className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="space-y-1">
               <h2 className="app-font-heading text-xl text-text-primary">{tx(locale, "لوحة الإسناد", "Dispatch board")}</h2>
               <p className="app-font-body text-sm text-text-secondary">
-                {tx(locale, "ابحث في الطلبات وعدل الإسناد مباشرة من نفس البطاقة.", "Search orders and manage assignment from the same card.")}
+                {tx(
+                  locale,
+                  "ابحث في الطلبات وصفِّها حسب التاجر والفرع والمنطقة، ثم عدل الإسناد من نفس البطاقة.",
+                  "Search orders, filter by merchant, branch, and zone, then manage assignment from the same card.",
+                )}
               </p>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
+
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={tx(locale, "ابحث برقم الطلب أو العميل أو الفرع", "Search by order, customer, or branch")}
-                className="lg:min-w-[320px]"
+              />
+              <Select
+                value={merchantFilter}
+                onChange={(event) => setMerchantFilter(event.target.value)}
+                options={[
+                  { value: "", label: tx(locale, "كل التجار", "All merchants") },
+                  ...merchantOptions,
+                ]}
+                dir={direction}
+              />
+              <Select
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+                options={[
+                  { value: "", label: tx(locale, "كل الفروع", "All branches") },
+                  ...branchOptions,
+                ]}
+                dir={direction}
+              />
+              <Select
+                value={zoneFilter}
+                onChange={(event) => setZoneFilter(event.target.value)}
+                options={[
+                  { value: "", label: tx(locale, "كل المناطق", "All zones") },
+                  ...zoneOptions,
+                ]}
+                dir={direction}
               />
               <Button variant="secondary" onClick={() => void loadData(false)} loading={loading || refreshing}>
                 {tx(locale, "تحديث", "Refresh")}
@@ -279,7 +382,7 @@ export default function AdminOrdersPage() {
           ) : null}
 
           <div className="grid gap-4 lg:hidden">
-            {visibleOrders.map((order) => {
+            {orders.map((order) => {
               const busy = actionState?.orderId === order.id;
               const assignable = ASSIGNABLE_STATUSES.has(order.status);
 
@@ -288,9 +391,7 @@ export default function AdminOrdersPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-mono text-sm font-black text-[var(--text-primary)]">{order.orderNumber}</div>
-                      <div className="mt-1 text-xs text-[var(--text-tertiary)]">
-                        {formatLocalizedDateTime(order.requestedAt, locale)}
-                      </div>
+                      <div className="mt-1 text-xs text-[var(--text-tertiary)]">{formatLocalizedDateTime(order.requestedAt, locale)}</div>
                     </div>
                     <StatusPill label={orderStatusText(order.status)} tone={orderStatusTone(order.status)} />
                   </div>
@@ -316,9 +417,7 @@ export default function AdminOrdersPage() {
                     </div>
                     <div className="rounded-[18px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] px-4 py-3">
                       <div className="text-xs text-[var(--text-tertiary)]">{tx(locale, "الرسوم", "Fee")}</div>
-                      <div className="mt-1 font-mono text-[var(--text-primary)]">
-                        {formatLocalizedCurrency(order.deliveryFee || 0, locale)}
-                      </div>
+                      <div className="mt-1 font-mono text-[var(--text-primary)]">{formatLocalizedCurrency(order.deliveryFee || 0, locale)}</div>
                     </div>
                   </div>
 
@@ -337,8 +436,8 @@ export default function AdminOrdersPage() {
 
                     <div className="text-xs text-[var(--text-tertiary)]">
                       {order.eligibleHeroes.length
-                        ? tx(locale, "القائمة مرتبة حسب التخصيص ثم الأقرب بالكيلومتر.", "List is ranked by branch dedication first, then nearest by km.")
-                        : tx(locale, "لا يوجد طيارون مؤهلون لهذا الطلب الآن.", "There are no eligible heroes for this order right now.")}
+                        ? tx(locale, "القائمة مرتبة حسب التخصيص للفرع ثم الأقرب داخل نطاق الفرع والمنطقة.", "List is ranked by branch dedication first, then nearest inside the order branch and zone.")
+                        : tx(locale, "لا يوجد طيارون مؤهلون الآن. تأكد من تفعيل الطيار وتوثيقه وربطه بفرع ومنطقة مناسبة.", "No eligible heroes right now. Make sure the hero is active, approved, and linked to the right branch and zone.")}
                     </div>
 
                     <Select
@@ -351,7 +450,7 @@ export default function AdminOrdersPage() {
                       }
                       disabled={!assignable || busy}
                       options={[
-                        { value: "", label: tx(locale, "اختر طيارا", "Select hero") },
+                        { value: "", label: tx(locale, "اختر طيارًا", "Select hero") },
                         ...order.eligibleHeroes.map((hero) => ({
                           value: hero.id,
                           label: `${hero.name} - ${assignmentReasonLabel(locale, hero.assignmentReason)} - ${distanceLabel(locale, hero.distanceKm)}`,
@@ -372,8 +471,7 @@ export default function AdminOrdersPage() {
                             <div className="font-bold text-[var(--text-primary)]">{selectedHero.name}</div>
                             <div className="mt-1">{assignmentReasonLabel(locale, selectedHero.assignmentReason)}</div>
                             <div className="mt-1">
-                              {tx(locale, "المسافة", "Distance")}: {distanceLabel(locale, selectedHero.distanceKm)} -{" "}
-                              {tx(locale, "الطلبات النشطة", "Active orders")}: {selectedHero.activeOrders}
+                              {tx(locale, "المسافة", "Distance")}: {distanceLabel(locale, selectedHero.distanceKm)} - {tx(locale, "الطلبات النشطة", "Active orders")}: {selectedHero.activeOrders}
                             </div>
                           </div>
                         );
@@ -414,7 +512,7 @@ export default function AdminOrdersPage() {
           </div>
 
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[1180px] text-sm">
+            <table className="w-full min-w-[1220px] text-sm">
               <thead className="border-b border-[var(--border-default)] text-[var(--text-tertiary)]">
                 <tr>
                   <th className="px-4 py-3 text-start font-bold">{tx(locale, "رقم الطلب", "Order number")}</th>
@@ -428,7 +526,7 @@ export default function AdminOrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-default)]">
-                {visibleOrders.map((order) => {
+                {orders.map((order) => {
                   const busy = actionState?.orderId === order.id;
                   const assignable = ASSIGNABLE_STATUSES.has(order.status);
 
@@ -436,15 +534,11 @@ export default function AdminOrdersPage() {
                     <tr key={order.id} className="align-top transition-colors hover:bg-[var(--bg-surface-2)]">
                       <td className="px-4 py-4">
                         <div className="font-mono font-bold text-[var(--text-primary)]">{order.orderNumber}</div>
-                        <div className="mt-1 text-xs text-[var(--text-tertiary)]">
-                          {formatLocalizedDateTime(order.requestedAt, locale)}
-                        </div>
+                        <div className="mt-1 text-xs text-[var(--text-tertiary)]">{formatLocalizedDateTime(order.requestedAt, locale)}</div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="font-bold text-[var(--text-primary)]">{order.branch.brandName}</div>
-                        <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                          {pickLabel(locale, order.branch.nameAr, order.branch.name)}
-                        </div>
+                        <div className="mt-1 text-xs text-[var(--text-secondary)]">{pickLabel(locale, order.branch.nameAr, order.branch.name)}</div>
                         <div className="mt-2 text-xs text-[var(--text-tertiary)]">
                           <Link href={`/admin/branches/${order.branch.id}`} className="underline decoration-[var(--border-default)] underline-offset-4">
                             {tx(locale, "فتح الفرع", "Open branch")}
@@ -458,29 +552,19 @@ export default function AdminOrdersPage() {
                         <div className="mt-1 text-xs text-[var(--text-secondary)]" dir="ltr">
                           {order.customerPhone}
                         </div>
-                        <div className="mt-1 text-xs text-[var(--text-tertiary)]">
-                          {order.deliveryAddress || tx(locale, "بدون عنوان", "No address")}
-                        </div>
+                        <div className="mt-1 text-xs text-[var(--text-tertiary)]">{order.deliveryAddress || tx(locale, "بدون عنوان", "No address")}</div>
                       </td>
-                      <td className="px-4 py-4 text-[var(--text-secondary)]">
-                        {pickLabel(locale, order.zone.nameAr, order.zone.name)}
-                      </td>
+                      <td className="px-4 py-4 text-[var(--text-secondary)]">{pickLabel(locale, order.zone.nameAr, order.zone.name)}</td>
                       <td className="px-4 py-4">
-                        <div className="font-bold text-[var(--text-primary)]">
-                          {order.hero?.name || tx(locale, "بدون إسناد", "Unassigned")}
-                        </div>
+                        <div className="font-bold text-[var(--text-primary)]">{order.hero?.name || tx(locale, "بدون إسناد", "Unassigned")}</div>
                         <div className="mt-1 text-xs text-[var(--text-tertiary)]">
-                          {assignable
-                            ? tx(locale, "يمكن تعديله الآن", "Can be changed now")
-                            : tx(locale, "قيد التنفيذ", "Already in fulfillment")}
+                          {assignable ? tx(locale, "متاح للتعديل الآن", "Can be changed now") : tx(locale, "داخل التنفيذ", "Already in fulfillment")}
                         </div>
                       </td>
                       <td className="px-4 py-4">
                         <StatusPill label={orderStatusText(order.status)} tone={orderStatusTone(order.status)} />
                       </td>
-                      <td className="px-4 py-4 font-mono font-bold text-[var(--text-primary)] opacity-80">
-                        {formatLocalizedCurrency(order.deliveryFee || 0, locale)}
-                      </td>
+                      <td className="px-4 py-4 font-mono font-bold text-[var(--text-primary)] opacity-80">{formatLocalizedCurrency(order.deliveryFee || 0, locale)}</td>
                       <td className="px-4 py-4">
                         <div className="space-y-3 rounded-[22px] border border-[var(--border-default)] bg-[var(--bg-base)] p-3">
                           <Select
@@ -493,7 +577,7 @@ export default function AdminOrdersPage() {
                             }
                             disabled={!assignable || busy}
                             options={[
-                              { value: "", label: tx(locale, "اختر طيارا", "Select hero") },
+                              { value: "", label: tx(locale, "اختر طيارًا", "Select hero") },
                               ...order.eligibleHeroes.map((hero) => ({
                                 value: hero.id,
                                 label: `${hero.name} - ${assignmentReasonLabel(locale, hero.assignmentReason)} - ${distanceLabel(locale, hero.distanceKm)}`,
@@ -501,6 +585,12 @@ export default function AdminOrdersPage() {
                             ]}
                             dir={direction}
                           />
+
+                          <div className="text-xs text-[var(--text-tertiary)]">
+                            {order.eligibleHeroes.length
+                              ? tx(locale, "تظهر هنا فقط الأسماء المؤهلة داخل نفس الفرع والمنطقة.", "Only eligible heroes from the same branch and zone appear here.")
+                              : tx(locale, "لا يوجد طيارون مؤهلون الآن. راجع التفعيل والتوثيق وربط الفرع والمنطقة.", "No eligible heroes right now. Check activation, approval, and branch/zone linkage.")}
+                          </div>
 
                           <div className="flex flex-wrap gap-2">
                             <Button
@@ -531,13 +621,11 @@ export default function AdminOrdersPage() {
             </table>
           </div>
 
-          {!visibleOrders.length ? (
+          {!orders.length ? (
             <div className="rounded-[22px] border border-dashed border-[var(--border-default)] bg-[var(--bg-base)] px-6 py-10 text-center">
-              <p className="app-font-heading text-lg text-[var(--text-primary)]">
-                {tx(locale, "لا توجد طلبات مطابقة", "No matching orders")}
-              </p>
+              <p className="app-font-heading text-lg text-[var(--text-primary)]">{tx(locale, "لا توجد طلبات مطابقة", "No matching orders")}</p>
               <p className="app-font-body mt-2 text-sm text-[var(--text-secondary)]">
-                {tx(locale, "جرب رقم طلب أو هاتف عميل أو اسم فرع.", "Try an order number, customer phone, or branch name.")}
+                {tx(locale, "جرّب تغيير التاجر أو الفرع أو المنطقة أو ابحث برقم الطلب.", "Try another merchant, branch, zone, or search term.")}
               </p>
             </div>
           ) : null}

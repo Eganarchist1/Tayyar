@@ -13,6 +13,8 @@ type HeroRecord = {
   email?: string | null;
   avatarUrl?: string | null;
   isActive?: boolean;
+  dispatchReady?: boolean;
+  dispatchIssues?: Array<"INACTIVE_ACCOUNT" | "MISSING_ZONE" | "MISSING_BRANCH_ASSIGNMENT" | "PENDING_VERIFICATION">;
   heroProfile?: {
     id: string;
     zoneId?: string | null;
@@ -45,7 +47,7 @@ type BranchRecord = {
   id: string;
   name: string;
   nameAr?: string | null;
-  merchant: { name: string; nameAr?: string | null };
+  merchant: { id: string; name: string; nameAr?: string | null };
 };
 
 type ZoneRecord = {
@@ -160,6 +162,16 @@ function VerificationPill({ locale, value }: { locale: "ar" | "en"; value?: stri
   return <StatusPill label={locale === "ar" ? label.ar : label.en} tone={tone} />;
 }
 
+function dispatchIssueLabel(
+  locale: "ar" | "en",
+  issue: "INACTIVE_ACCOUNT" | "MISSING_ZONE" | "MISSING_BRANCH_ASSIGNMENT" | "PENDING_VERIFICATION",
+) {
+  if (issue === "INACTIVE_ACCOUNT") return tx(locale, "الحساب غير نشط", "Inactive account");
+  if (issue === "MISSING_ZONE") return tx(locale, "بدون منطقة", "Missing zone");
+  if (issue === "MISSING_BRANCH_ASSIGNMENT") return tx(locale, "بدون ربط فرع", "Missing branch assignment");
+  return tx(locale, "قيد التوثيق", "Pending verification");
+}
+
 
 function createUploadState(): UploadState {
   return {
@@ -270,6 +282,9 @@ export default function AdminHeroesPage() {
   const [zones, setZones] = React.useState<ZoneRecord[]>([]);
   const [branches, setBranches] = React.useState<BranchRecord[]>([]);
   const [query, setQuery] = React.useState("");
+  const [merchantFilter, setMerchantFilter] = React.useState("");
+  const [branchFilter, setBranchFilter] = React.useState("");
+  const [zoneFilter, setZoneFilter] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [accountFilter, setAccountFilter] = React.useState<AccountFilter>("ACTIVE");
   const [editing, setEditing] = React.useState<HeroRecord | null>(null);
@@ -322,8 +337,26 @@ export default function AdminHeroesPage() {
   });
 
   const loadData = React.useCallback(async () => {
+    const heroParams = new URLSearchParams();
+    if (merchantFilter) {
+      heroParams.set("merchantId", merchantFilter);
+    }
+    if (branchFilter) {
+      heroParams.set("branchId", branchFilter);
+    }
+    if (zoneFilter) {
+      heroParams.set("zoneId", zoneFilter);
+    }
+    if (statusFilter !== "ALL") {
+      heroParams.set("status", statusFilter);
+    }
+
     const [heroesData, zonesData, branchesData] = await Promise.all([
-      apiFetch<HeroRecord[]>("/v1/admin/heroes", undefined, "ADMIN"),
+      apiFetch<HeroRecord[]>(
+        heroParams.size ? `/v1/admin/heroes?${heroParams.toString()}` : "/v1/admin/heroes",
+        undefined,
+        "ADMIN",
+      ),
       apiFetch<ZoneRecord[]>("/v1/admin/zones", undefined, "ADMIN"),
       apiFetch<BranchRecord[]>("/v1/admin/branches?status=ACTIVE", undefined, "ADMIN"),
     ]);
@@ -332,7 +365,7 @@ export default function AdminHeroesPage() {
     setZones(zonesData);
     setBranches(branchesData);
     setEditing((current) => (current ? heroesData.find((hero) => hero.id === current.id) || null : null));
-  }, []);
+  }, [branchFilter, merchantFilter, statusFilter, zoneFilter]);
 
   React.useEffect(() => {
     void loadData();
@@ -388,12 +421,39 @@ export default function AdminHeroesPage() {
 
   const filteredHeroes = heroes.filter((hero) => {
     const matchesQuery = `${hero.name} ${hero.phone} ${hero.email || ""}`.toLowerCase().includes(query.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || (hero.heroProfile?.status || "OFFLINE") === statusFilter;
     const matchesAccount =
       accountFilter === "ALL" ||
       (accountFilter === "ACTIVE" ? hero.isActive !== false : hero.isActive === false);
-    return matchesQuery && matchesStatus && matchesAccount;
+    return matchesQuery && matchesAccount;
   });
+  const merchantOptions = React.useMemo(() => {
+    const seen = new Map<string, { value: string; label: string }>();
+    for (const branch of branches) {
+      if (!seen.has(branch.merchant.id)) {
+        seen.set(branch.merchant.id, {
+          value: branch.merchant.id,
+          label: locale === "ar" ? branch.merchant.nameAr || branch.merchant.name : branch.merchant.name || branch.merchant.nameAr || branch.merchant.name,
+        });
+      }
+    }
+    return Array.from(seen.values()).sort((left, right) => left.label.localeCompare(right.label, locale));
+  }, [branches, locale]);
+  const branchOptions = React.useMemo(() => {
+    return branches
+      .filter((branch) => !merchantFilter || branch.merchant.id === merchantFilter)
+      .map((branch) => ({
+        value: branch.id,
+        label: `${locale === "ar" ? branch.nameAr || branch.name : branch.name || branch.nameAr || branch.name} • ${
+          locale === "ar" ? branch.merchant.nameAr || branch.merchant.name : branch.merchant.name || branch.merchant.nameAr || branch.merchant.name
+        }`,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, locale));
+  }, [branches, locale, merchantFilter]);
+  React.useEffect(() => {
+    if (branchFilter && !branchOptions.some((branch) => branch.value === branchFilter)) {
+      setBranchFilter("");
+    }
+  }, [branchFilter, branchOptions]);
   const hasPendingUploads = Object.values(uploadState).some((entry) => entry.uploading);
   const selectedVacationAllowance =
     hrDetail?.vacationAllowances.find((allowance) => allowance.type === vacationForm.type) || null;
@@ -803,6 +863,32 @@ export default function AdminHeroesPage() {
             onChange={(event) => setQuery(event.target.value)}
           />
           <div className="grid gap-2">
+            <select className={panelFieldClass} value={merchantFilter} onChange={(event) => setMerchantFilter(event.target.value)}>
+              <option value="">{tx(locale, "كل التجار", "All merchants")}</option>
+              {merchantOptions.map((merchant) => (
+                <option key={merchant.value} value={merchant.value}>
+                  {merchant.label}
+                </option>
+              ))}
+            </select>
+            <select className={panelFieldClass} value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}>
+              <option value="">{tx(locale, "كل الفروع", "All branches")}</option>
+              {branchOptions.map((branch) => (
+                <option key={branch.value} value={branch.value}>
+                  {branch.label}
+                </option>
+              ))}
+            </select>
+            <select className={panelFieldClass} value={zoneFilter} onChange={(event) => setZoneFilter(event.target.value)}>
+              <option value="">{tx(locale, "كل المناطق", "All zones")}</option>
+              {zones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {locale === "ar" ? zone.nameAr || zone.name : zone.name || zone.nameAr || zone.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-2">
             {accountFilters.map((filter) => (
               <button
                 key={filter}
@@ -921,6 +1007,30 @@ export default function AdminHeroesPage() {
                     cell: (item: HeroRecord) => <VerificationPill locale={locale} value={item.heroProfile?.verificationStatus} />,
                   },
                   {
+                    key: "dispatchState",
+                    header: tx(locale, "جاهزية الإسناد", "Dispatch readiness"),
+                    cell: (item: HeroRecord) => (
+                      <div className="space-y-2">
+                        <StatusPill
+                          label={item.dispatchReady ? tx(locale, "جاهز", "Ready") : tx(locale, "بحاجة لاستكمال", "Needs setup")}
+                          tone={item.dispatchReady ? "success" : "gold"}
+                        />
+                        {!item.dispatchReady && item.dispatchIssues?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {item.dispatchIssues.map((issue) => (
+                              <span
+                                key={`${item.id}-${issue}`}
+                                className="rounded-full border border-[var(--gold-500)] border-opacity-30 bg-[var(--gold-500)] bg-opacity-10 px-2 py-1 text-[11px] font-bold text-[var(--gold-700)] dark:text-[var(--gold-200)]"
+                              >
+                                {dispatchIssueLabel(locale, issue)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ),
+                  },
+                  {
                     key: "heroOrders",
                     header: tx(locale, "الطلبات", "Orders"),
                     cell: (item: HeroRecord) => (
@@ -965,6 +1075,22 @@ export default function AdminHeroesPage() {
                          <div className="mt-1 font-mono text-[var(--text-primary)] font-medium">{item.heroProfile?.totalDeliveries || 0}</div>
                        </div>
                     </div>
+                    {!item.dispatchReady && item.dispatchIssues?.length ? (
+                      <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--border-default)]">
+                        {item.dispatchIssues.map((issue) => (
+                          <span
+                            key={`${item.id}-${issue}`}
+                            className="rounded-full border border-[var(--gold-500)] border-opacity-30 bg-[var(--gold-500)] bg-opacity-10 px-2 py-1 text-[11px] font-bold text-[var(--gold-700)] dark:text-[var(--gold-200)]"
+                          >
+                            {dispatchIssueLabel(locale, issue)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="pt-3 border-t border-[var(--border-default)]">
+                        <StatusPill label={tx(locale, "جاهز للإسناد", "Dispatch ready")} tone="success" />
+                      </div>
+                    )}
                   </div>
                 )}
              />

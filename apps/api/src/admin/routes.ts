@@ -29,7 +29,11 @@ import { NotificationService } from "../services/notifications";
 import { buildAdminReportExport } from "../services/report-exports";
 import { enqueueAssignmentJob } from "../workers/queues";
 import { parseObjectBody } from "../lib/request-body";
-import { assertHeroEligibleForOrder, listEligibleHeroesForOrder } from "../services/assignment-eligibility";
+import {
+  assertHeroEligibleForOrder,
+  buildEligibleHeroViewModel,
+  listEligibleHeroesForOrder,
+} from "../services/assignment-eligibility";
 import {
   getCustomerDetailForAdmin,
   listCustomersForAdmin,
@@ -202,6 +206,17 @@ function buildHeroPayload(user: {
     }>;
   };
 }) {
+  const dispatchIssues = buildHeroDispatchIssues({
+    isActive: user.isActive,
+    heroProfile: user.heroProfile
+      ? {
+          zoneId: user.heroProfile.zoneId,
+          verificationStatus: user.heroProfile.verificationStatus,
+          assignments: user.heroProfile.assignments,
+        }
+      : null,
+  });
+
   return {
     id: user.id,
     name: user.name,
@@ -209,6 +224,8 @@ function buildHeroPayload(user: {
     email: user.email,
     avatarUrl: user.avatarUrl,
     isActive: user.isActive,
+    dispatchReady: dispatchIssues.length === 0,
+    dispatchIssues,
     heroProfile: user.heroProfile
       ? {
           id: user.heroProfile.id,
@@ -291,6 +308,20 @@ function buildAdminUserPayload(user: {
     zone: { id: string; name: string; nameAr: string | null };
   }>;
 }) {
+  const dispatchIssues =
+    user.role === UserRole.HERO
+      ? buildHeroDispatchIssues({
+          isActive: user.isActive,
+          heroProfile: user.heroProfile
+            ? {
+                zoneId: user.heroProfile.zone?.id || null,
+                verificationStatus: user.heroProfile.verificationStatus || null,
+                assignments: user.heroProfile.assignments,
+              }
+            : null,
+        })
+      : [];
+
   return {
     id: user.id,
     name: user.name,
@@ -302,6 +333,8 @@ function buildAdminUserPayload(user: {
     adminScopes: user.adminScopes || [],
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
+    dispatchReady: user.role === UserRole.HERO ? dispatchIssues.length === 0 : true,
+    dispatchIssues,
     heroProfile: user.heroProfile
       ? {
           id: user.heroProfile.id,
@@ -372,6 +405,37 @@ function normalizeIdArray(input?: unknown) {
         .filter(Boolean),
     ),
   );
+}
+
+function buildHeroDispatchIssues(input: {
+  isActive: boolean;
+  heroProfile?: {
+    zoneId?: string | null;
+    verificationStatus?: HeroVerificationStatus | null;
+    assignments?: Array<unknown>;
+  } | null;
+}) {
+  const issues: Array<
+    "INACTIVE_ACCOUNT" | "MISSING_ZONE" | "MISSING_BRANCH_ASSIGNMENT" | "PENDING_VERIFICATION"
+  > = [];
+
+  if (!input.isActive) {
+    issues.push("INACTIVE_ACCOUNT");
+  }
+
+  if (!input.heroProfile?.zoneId) {
+    issues.push("MISSING_ZONE");
+  }
+
+  if (!input.heroProfile?.assignments?.length) {
+    issues.push("MISSING_BRANCH_ASSIGNMENT");
+  }
+
+  if (input.heroProfile?.verificationStatus !== HeroVerificationStatus.APPROVED) {
+    issues.push("PENDING_VERIFICATION");
+  }
+
+  return issues;
 }
 
 async function loadAdminUserForPayload(tx: Prisma.TransactionClient | typeof prisma, id: string) {
@@ -508,20 +572,17 @@ async function upsertHeroAssignmentAndCompensation(params: {
     throw new AppError(409, "BRANCH_INACTIVE", "Inactive branches cannot receive hero assignments");
   }
 
-  if (model === "DEDICATED") {
-    await tx.heroAssignment.updateMany({
-      where: {
-        heroId: heroProfileId,
-        isActive: true,
-        model: "DEDICATED",
-        NOT: { branchId },
-      },
-      data: {
-        isActive: false,
-        endDate: new Date(),
-      },
-    });
-  }
+  await tx.heroAssignment.updateMany({
+    where: {
+      heroId: heroProfileId,
+      isActive: true,
+      NOT: { branchId },
+    },
+    data: {
+      isActive: false,
+      endDate: new Date(),
+    },
+  });
 
   const existingAssignment = await tx.heroAssignment.findFirst({
     where: {
@@ -583,6 +644,38 @@ async function upsertHeroAssignmentAndCompensation(params: {
   });
 
   return assignment;
+}
+
+async function clearHeroAssignmentAndCompensation(params: {
+  tx: Prisma.TransactionClient | typeof prisma;
+  heroProfileId: string;
+  userId: string;
+}) {
+  const { tx, heroProfileId, userId } = params;
+
+  await tx.heroAssignment.updateMany({
+    where: {
+      heroId: heroProfileId,
+      isActive: true,
+    },
+    data: {
+      isActive: false,
+      endDate: new Date(),
+    },
+  });
+
+  await tx.staffCompensationProfile.updateMany({
+    where: {
+      userId,
+      target: StaffCompensationTarget.HERO,
+      isActive: true,
+    },
+    data: {
+      isActive: false,
+      effectiveTo: new Date(),
+      notes: "Branch assignment cleared by admin",
+    },
+  });
 }
 
 async function releaseHeroIfIdle(heroId: string) {
@@ -985,7 +1078,7 @@ export default async function adminRoutes(server: FastifyInstance) {
           phone,
           language,
           password,
-          isActive: isActive ?? Boolean(password),
+          isActive: isActive ?? true,
           zoneId: zoneId || null,
           status: (status as HeroStatus | undefined) || HeroStatus.ONLINE,
           verificationStatus: verificationStatus || HeroVerificationStatus.APPROVED,
@@ -1000,6 +1093,12 @@ export default async function adminRoutes(server: FastifyInstance) {
             model: assignmentModel || "POOL",
             baseSalary: typeof baseSalary === "number" ? baseSalary : null,
             bonusPerOrder: typeof bonusPerOrder === "number" ? bonusPerOrder : null,
+          });
+        } else if (branchId !== undefined && nextHero.heroProfile) {
+          await clearHeroAssignmentAndCompensation({
+            tx,
+            heroProfileId: nextHero.heroProfile.id,
+            userId: nextHero.id,
           });
         }
 
@@ -1155,6 +1254,12 @@ export default async function adminRoutes(server: FastifyInstance) {
             baseSalary: typeof baseSalary === "number" ? baseSalary : null,
             bonusPerOrder: typeof bonusPerOrder === "number" ? bonusPerOrder : null,
           });
+        } else if (branchId !== undefined && nextHero.heroProfile) {
+          await clearHeroAssignmentAndCompensation({
+            tx,
+            heroProfileId: nextHero.heroProfile.id,
+            userId: nextHero.id,
+          });
         }
 
         await applyRoleAssignments(tx, {
@@ -1276,8 +1381,41 @@ export default async function adminRoutes(server: FastifyInstance) {
   });
 
   server.get("/heroes", async (request, reply) => {
+    const {
+      merchantId,
+      branchId,
+      zoneId,
+      status,
+    } = request.query as {
+      merchantId?: string;
+      branchId?: string;
+      zoneId?: string;
+      status?: HeroStatus | "ALL";
+    };
+
     const heroes = await prisma.user.findMany({
-      where: { role: UserRole.HERO },
+      where: {
+        role: UserRole.HERO,
+        heroProfile: {
+          is: {
+            zoneId: zoneId || undefined,
+            status: status && status !== "ALL" ? status : undefined,
+            assignments: branchId || merchantId
+              ? {
+                  some: {
+                    isActive: true,
+                    branchId: branchId || undefined,
+                    branch: merchantId
+                      ? {
+                          brandId: merchantId,
+                        }
+                      : undefined,
+                  },
+                }
+              : undefined,
+          },
+        },
+      },
       include: {
         heroProfile: {
           include: {
@@ -1504,6 +1642,12 @@ export default async function adminRoutes(server: FastifyInstance) {
           model: assignmentModel || "POOL",
           baseSalary: typeof baseSalary === "number" ? baseSalary : null,
           bonusPerOrder: typeof bonusPerOrder === "number" ? bonusPerOrder : null,
+        });
+      } else if (branchId !== undefined && nextHero.heroProfile) {
+        await clearHeroAssignmentAndCompensation({
+          tx,
+          heroProfileId: nextHero.heroProfile.id,
+          userId: nextHero.id,
         });
       }
 
@@ -2947,8 +3091,76 @@ export default async function adminRoutes(server: FastifyInstance) {
     };
   });
 
-  server.get("/orders", async () => {
+  server.get("/orders", async (request) => {
+    const {
+      merchantId,
+      branchId,
+      zoneId,
+      q,
+    } = request.query as {
+      merchantId?: string;
+      branchId?: string;
+      zoneId?: string;
+      q?: string;
+    };
+
+    const search = q?.trim();
     const orders = await prisma.order.findMany({
+      where: {
+        branchId: branchId || undefined,
+        zoneId: zoneId || undefined,
+        branch: merchantId
+          ? {
+              brandId: merchantId || undefined,
+            }
+          : undefined,
+        OR: search
+          ? [
+              { orderNumber: { contains: search, mode: "insensitive" } },
+              { customerName: { contains: search, mode: "insensitive" } },
+              { customerPhone: { contains: search, mode: "insensitive" } },
+              { deliveryAddress: { contains: search, mode: "insensitive" } },
+              {
+                branch: {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { nameAr: { contains: search, mode: "insensitive" } },
+                    {
+                      brand: {
+                        OR: [
+                          { name: { contains: search, mode: "insensitive" } },
+                          { nameAr: { contains: search, mode: "insensitive" } },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                zone: {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { nameAr: { contains: search, mode: "insensitive" } },
+                  ],
+                },
+              },
+              {
+                hero: {
+                  is: {
+                    user: {
+                      is: {
+                        OR: [
+                          { name: { contains: search, mode: "insensitive" } },
+                          { phone: { contains: search, mode: "insensitive" } },
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            ]
+          : undefined,
+      },
       include: {
         branch: {
           include: {
@@ -2963,7 +3175,7 @@ export default async function adminRoutes(server: FastifyInstance) {
         zone: true,
       },
       orderBy: { requestedAt: "desc" },
-      take: 80,
+      take: 200,
     });
 
     const eligibleHeroesByOrder = new Map<string, Awaited<ReturnType<typeof listEligibleHeroesForOrder>>["eligibleHeroes"]>();
@@ -3000,21 +3212,7 @@ export default async function adminRoutes(server: FastifyInstance) {
         name: order.zone.name,
         nameAr: order.zone.nameAr,
       },
-      eligibleHeroes: (eligibleHeroesByOrder.get(order.id) || []).map((hero) => ({
-        id: hero.heroId,
-        userId: hero.userId,
-        name: hero.name,
-        phone: hero.phone,
-        status: hero.status,
-        distanceKm: hero.distanceKm,
-        activeOrders: hero.activeOrders,
-        assignmentReason: hero.assignmentReason,
-        zone: {
-          id: hero.zoneId,
-          name: hero.zoneName,
-          nameAr: hero.zoneNameAr,
-        },
-      })),
+      eligibleHeroes: (eligibleHeroesByOrder.get(order.id) || []).map(buildEligibleHeroViewModel),
     }));
   });
 

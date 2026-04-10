@@ -285,6 +285,17 @@ export default async function merchantRoutes(server: FastifyInstance) {
       server.log.error({ err: error, orderId: order.id }, "Auto-assignment failed");
     });
 
+    server.broadcast(
+      "ORDER_CREATED",
+      {
+        orderId: order.id,
+        trackingId: order.trackingId,
+        orderNumber: order.orderNumber,
+        status: order.status,
+      },
+      { channels: ["orders", "live-map"] },
+    );
+
     return order;
   });
 
@@ -554,6 +565,10 @@ export default async function merchantRoutes(server: FastifyInstance) {
   });
 
   server.post("/branches", async (request, reply) => {
+    if ((request.user as any).role !== "ADMIN") {
+      throw new AppError(403, "BRANCH_CREATE_ADMIN_ONLY", "Branches can only be created from the admin panel");
+    }
+
     const { name, nameAr, address, lat, lng, phone } = parseObjectBody<any>(request.body);
     const userEmail = (request.user as any).email;
 

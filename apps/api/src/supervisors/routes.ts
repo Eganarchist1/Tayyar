@@ -5,7 +5,12 @@ import { getSupervisorOperationalAlerts } from "../services/operational-alerts";
 import { AppError } from "../lib/errors";
 import { parseObjectBody } from "../lib/request-body";
 import { recordAuditEvent } from "../services/audit-events";
-import { assertHeroEligibleForOrder, listEligibleHeroesForOrder } from "../services/assignment-eligibility";
+import {
+  assertHeroEligibleForOrder,
+  buildEligibleHeroViewModel,
+  listEligibleHeroesForOrder,
+} from "../services/assignment-eligibility";
+import { getHeroShiftMetrics } from "../services/hero-shift-metrics";
 
 export default async function supervisorRoutes(server: FastifyInstance) {
   server.addHook("onRequest", requireRole(["SUPERVISOR", "ADMIN"]));
@@ -73,18 +78,18 @@ export default async function supervisorRoutes(server: FastifyInstance) {
 
     const enrichedOrders = await Promise.all(
       orders.map(async (order) => {
-        const { eligibleHeroes } = await listEligibleHeroesForOrder(order.id, zoneIds);
-        return {
-          ...order,
-          branch: {
-            ...order.branch,
-          },
-          deliveryLat: order.deliveryLat,
-          deliveryLng: order.deliveryLng,
-          eligibleHeroes,
-        };
-      }),
-    );
+      const { eligibleHeroes } = await listEligibleHeroesForOrder(order.id, zoneIds);
+      return {
+        ...order,
+        branch: {
+          ...order.branch,
+        },
+        deliveryLat: order.deliveryLat,
+        deliveryLng: order.deliveryLng,
+        eligibleHeroes: eligibleHeroes.map(buildEligibleHeroViewModel),
+      };
+    }),
+  );
 
     return enrichedOrders;
   });
@@ -117,6 +122,7 @@ export default async function supervisorRoutes(server: FastifyInstance) {
       },
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
     });
+    const shiftMetrics = await getHeroShiftMetrics(heroes.map((hero) => hero.id));
 
     return heroes.map((hero) => ({
       id: hero.id,
@@ -127,6 +133,12 @@ export default async function supervisorRoutes(server: FastifyInstance) {
       currentLat: hero.currentLat,
       currentLng: hero.currentLng,
       totalDeliveries: hero.totalDeliveries,
+      totalKmToday: shiftMetrics.get(hero.id)?.totalKmToday || 0,
+      rideMinutesToday: shiftMetrics.get(hero.id)?.rideMinutesToday || 0,
+      checkInAt: shiftMetrics.get(hero.id)?.checkInAt || null,
+      checkOutAt: shiftMetrics.get(hero.id)?.checkOutAt || null,
+      breakMinutesToday: shiftMetrics.get(hero.id)?.breakMinutesToday || 0,
+      onBreakSince: shiftMetrics.get(hero.id)?.onBreakSince || null,
       user: {
         name: hero.user.name,
         phone: hero.user.phone,

@@ -23,13 +23,16 @@ type ActiveOrder = {
     } | null;
   } | null;
   eligibleHeroes: Array<{
-    heroId: string;
+    id: string;
+    userId: string;
     name: string;
+    phone?: string | null;
+    status: string;
     distanceKm: number;
     activeOrders: number;
+    ordersToday?: number;
     assignmentReason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE";
-    zoneName?: string | null;
-    zoneNameAr?: string | null;
+    zone: { id?: string | null; name?: string | null; nameAr?: string | null };
   }>;
 };
 
@@ -38,8 +41,14 @@ type AlertRecord = OperationalAlertItem;
 const tx = (locale: "ar" | "en", ar: string, en: string) => (locale === "ar" ? ar : en);
 const alertTone = (severity: string): "primary" | "gold" | "neutral" =>
   severity === "high" ? "primary" : severity === "medium" ? "gold" : "neutral";
+
 const distanceLabel = (locale: "ar" | "en", value: number) =>
-  Number.isFinite(value) ? `${value.toFixed(1)}${tx(locale, " كم", " km")}` : tx(locale, "بانتظار الموقع الحي", "Awaiting live location");
+  Number.isFinite(value) ? `${value.toFixed(1)} ${tx(locale, "كم", "km")}` : tx(locale, "بانتظار الموقع الحي", "Awaiting live location");
+
+const assignmentReasonLabel = (locale: "ar" | "en", reason: "DEDICATED_BRANCH" | "NEAREST_IN_ZONE") =>
+  reason === "DEDICATED_BRANCH"
+    ? tx(locale, "مخصص لهذا الفرع", "Dedicated branch")
+    : tx(locale, "الأقرب داخل النطاق", "Nearest in zone");
 
 export default function SupervisorOrdersPage() {
   const { locale } = useLocale();
@@ -91,7 +100,9 @@ export default function SupervisorOrdersPage() {
   }, [loadData]);
 
   React.useEffect(() => {
-    if (!lastMessage) return;
+    if (!lastMessage) {
+      return;
+    }
     if (lastMessage.type === "ORDER_STATUS_UPDATE" || lastMessage.type === "ORDER_CREATED") {
       void loadData(false);
     }
@@ -193,7 +204,7 @@ export default function SupervisorOrdersPage() {
 
         <div className="grid gap-4 xl:grid-cols-2">
           {orders.map((order) => (
-            <Card key={order.id} className="space-y-5 transition-shadow hover:shadow-[var(--shadow-lg)] border-[var(--border-default)]">
+            <Card key={order.id} className="space-y-5 border-[var(--border-default)] transition-shadow hover:shadow-[var(--shadow-lg)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-lg font-black text-[var(--text-primary)]">{order.orderNumber}</div>
@@ -204,7 +215,7 @@ export default function SupervisorOrdersPage() {
                   </div>
                   <div className="mt-2 text-xs font-bold text-[var(--text-tertiary)]">
                     {tx(locale, "الإسناد الحالي", "Current assignment")}:{" "}
-                    <span className="text-[var(--text-primary)] font-medium">
+                    <span className="font-medium text-[var(--text-primary)]">
                       {order.hero?.user?.name || tx(locale, "بدون طيار", "No hero")}
                     </span>
                   </div>
@@ -212,15 +223,16 @@ export default function SupervisorOrdersPage() {
                 <StatusPill label={orderStatusText(order.status)} tone={orderStatusTone(order.status)} />
               </div>
 
-              <div className="space-y-3 rounded-[20px] bg-[var(--bg-surface-2)] border border-[var(--border-default)] p-4">
+              <div className="space-y-3 rounded-[20px] border border-[var(--border-default)] bg-[var(--bg-surface-2)] p-4">
                 <label className="block app-font-body text-sm font-bold text-[var(--text-primary)]">
                   {tx(locale, "اختر الطيار", "Select hero")}
                 </label>
                 <div className="text-xs text-[var(--text-secondary)]">
                   {order.eligibleHeroes.length
-                    ? tx(locale, "الاختيارات مرتبة حسب التخصيص ثم الأقرب بالكيلومتر.", "Choices are ranked by branch dedication first, then nearest by km.")
-                    : tx(locale, "لا يوجد طيارون مؤهلون داخل هذا النطاق الآن.", "There are no eligible heroes in this scope right now.")}
+                    ? tx(locale, "تظهر هنا فقط الأسماء المؤهلة داخل نطاق المشرف والفرع والمنطقة.", "Only eligible heroes inside the supervisor scope, branch, and zone appear here.")
+                    : tx(locale, "لا يوجد طيارون مؤهلون داخل هذا النطاق الآن. راجع التفعيل والتوثيق وربط الفرع والمنطقة.", "There are no eligible heroes in this scope right now. Check activation, approval, and branch/zone linkage.")}
                 </div>
+
                 <select
                   className="h-12 w-full rounded-[14px] border border-[var(--border-default)] bg-[var(--bg-base)] px-4 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--primary-300)]"
                   value={selectedHero[order.id] || ""}
@@ -238,12 +250,10 @@ export default function SupervisorOrdersPage() {
                 >
                   <option value="">{tx(locale, "اختر من القائمة", "Choose from the list")}</option>
                   {order.eligibleHeroes.map((hero) => (
-                    <option key={hero.heroId} value={hero.heroId}>
+                    <option key={hero.id} value={hero.id}>
                       {hero.name}
                       {" - "}
-                      {hero.assignmentReason === "DEDICATED_BRANCH"
-                        ? tx(locale, "مخصص للفرع", "Dedicated branch")
-                        : tx(locale, "الأقرب في النطاق", "Nearest in zone")}
+                      {assignmentReasonLabel(locale, hero.assignmentReason)}
                       {" - "}
                       {distanceLabel(locale, hero.distanceKm)}
                     </option>
@@ -252,13 +262,9 @@ export default function SupervisorOrdersPage() {
 
                 <div className="grid gap-3 md:grid-cols-2">
                   {order.eligibleHeroes.slice(0, 2).map((hero) => (
-                    <div key={`${order.id}-${hero.heroId}`} className="rounded-[16px] border border-[var(--border-default)] bg-[var(--bg-base)] px-4 py-3">
+                    <div key={`${order.id}-${hero.id}`} className="rounded-[16px] border border-[var(--border-default)] bg-[var(--bg-base)] px-4 py-3">
                       <div className="font-bold text-[var(--text-primary)]">{hero.name}</div>
-                      <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                        {hero.assignmentReason === "DEDICATED_BRANCH"
-                          ? tx(locale, "مخصص لهذا الفرع", "Dedicated to this branch")
-                          : tx(locale, "الأقرب داخل النطاق", "Nearest inside the zone")}
-                      </div>
+                      <div className="mt-1 text-xs text-[var(--text-secondary)]">{assignmentReasonLabel(locale, hero.assignmentReason)}</div>
                       <div className="mt-2 text-xs font-mono text-[var(--text-tertiary)]">
                         {distanceLabel(locale, hero.distanceKm)}
                         {" - "}
@@ -282,7 +288,7 @@ export default function SupervisorOrdersPage() {
           ))}
 
           {!loading && !orders.length ? (
-            <div className="rounded-[24px] border border-dashed border-[var(--border-default)] px-5 py-10 text-center text-sm text-[var(--text-secondary)] col-span-full">
+            <div className="col-span-full rounded-[24px] border border-dashed border-[var(--border-default)] px-5 py-10 text-center text-sm text-[var(--text-secondary)]">
               {tx(locale, "لا توجد طلبات نشطة داخل نطاقك الآن.", "There are no active orders in your scope right now.")}
             </div>
           ) : null}
