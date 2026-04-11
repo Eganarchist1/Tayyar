@@ -564,42 +564,48 @@ export default async function merchantRoutes(server: FastifyInstance) {
     }));
   });
 
-  server.post("/branches", async (request, reply) => {
-    if ((request.user as any).role !== "ADMIN") {
-      throw new AppError(403, "BRANCH_CREATE_ADMIN_ONLY", "Branches can only be created from the admin panel");
-    }
-
-    const { name, nameAr, address, lat, lng, phone } = parseObjectBody<any>(request.body);
-    const userEmail = (request.user as any).email;
-
-    const brand = await getCurrentMerchantBrand(userEmail);
-
-    if (!brand) {
-      throw new AppError(404, "MERCHANT_NOT_FOUND", "Merchant brand not found");
-    }
-
-    if (typeof lat !== "number" || !Number.isFinite(lat) || typeof lng !== "number" || !Number.isFinite(lng)) {
-      throw new AppError(
-        400,
-        "BRANCH_LOCATION_REQUIRED",
-        "Confirm the branch location on the map before saving the branch",
-      );
-    }
-
-    const branch = await prisma.branch.create({
-      data: {
-        name,
-        nameAr,
-        address,
-        lat,
-        lng,
-        phone,
-        brandId: brand.id
+  server.post(
+    "/branches",
+    {
+      preHandler: [requireRole(["ADMIN"])],
+    },
+    async (request, reply) => {
+      if ((request.user as any).role !== "ADMIN") {
+        throw new AppError(403, "BRANCH_CREATE_ADMIN_ONLY", "Branches can only be created from the admin panel");
       }
-    });
 
-    return branch;
-  });
+      const { name, nameAr, address, lat, lng, phone } = parseObjectBody<any>(request.body);
+      const userEmail = (request.user as any).email;
+
+      const brand = await getCurrentMerchantBrand(userEmail);
+
+      if (!brand) {
+        throw new AppError(404, "MERCHANT_NOT_FOUND", "Merchant brand not found");
+      }
+
+      if (typeof lat !== "number" || !Number.isFinite(lat) || typeof lng !== "number" || !Number.isFinite(lng)) {
+        throw new AppError(
+          400,
+          "BRANCH_LOCATION_REQUIRED",
+          "Confirm the branch location on the map before saving the branch",
+        );
+      }
+
+      const branch = await prisma.branch.create({
+        data: {
+          name,
+          nameAr,
+          address,
+          lat,
+          lng,
+          phone,
+          brandId: brand.id,
+        },
+      });
+
+      return branch;
+    },
+  );
 
   server.get("/branch/orders", async (request, reply) => {
     const userEmail = (request.user as any).email;
